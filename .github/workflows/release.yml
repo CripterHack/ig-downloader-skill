@@ -87,7 +87,7 @@ jobs:
           git commit \
             -m "chore(release): ${{ steps.release.outputs.tag_name }} [skip ci]" \
             -m "${{ steps.release.outputs.tag_name }}"
-          git push
+          git push origin main
 
       # ── 6. Create annotated tag ────────────────────────────────────
       - name: Tag release
