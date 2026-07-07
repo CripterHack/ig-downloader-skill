@@ -55,37 +55,33 @@ Activate this agent when the human says ANY of:
 The script auto-detects the best auth method. This is the decision tree the agent
 should follow before invoking the script:
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                    DECISION TREE                              │
-│                                                               │
-│  ¿Exists ~/.ig-downloader/config.json?                        │
-│  ├── YES ──→ run: ig-downloader -u USER -o ./dir              │
-│  │           (sessionid from config auto-loaded)               │
-│  │                                                             │
-│  └── NO ───┐                                                   │
-│            ▼                                                   │
-│  ¿Human has sessionid string to pass?                          │
-│  ├── YES ──→ run: ig-downloader -u USER --sessionid "SID"     │
-│  │                        -o ./dir                             │
-│  │                                                             │
-│  └── NO ───┐                                                   │
-│            ▼                                                   │
-│  ¿Human wants interactive setup?                               │
-│  ├── YES ──→ run: ig-downloader --setup                        │
-│  │           (Playwright opens browser → login → saves config) │
-│  │                                                             │
-│  └── NO ───┐                                                   │
-│            ▼                                                   │
-│  ¿Apify dataset ID or toon file available?                     │
-│  ├── YES ──→ run: ig-downloader --dataset ID --api-token TOKEN │
-│  │                          -u USER -o ./dir                   │
-│  │              OR: ig-downloader --toon-file ./data.txt       │
-│  │                          -u USER -o ./dir                   │
-│  │                                                             │
-│  └── NO ───→ Inform human: "Need Instagram sessionid or       │
-│               Apify dataset. Run --setup or provide --sessionid"│
-└───────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A[Start: Human requests Instagram download] --> B{config.json exists?}
+    B -->|YES| C[Run sessionid mode]
+    C --> C1["ig-downloader -u USER -o ./dir"]
+    C1 --> D[sessionid auto-loaded from config]
+    D --> E[Done ✅]
+
+    B -->|NO| F{Human has sessionid string?}
+    F -->|YES| G["ig-downloader -u USER --sessionid 'SID' -o ./dir"]
+    G --> E
+
+    F -->|NO| H{Human wants interactive setup?}
+    H -->|YES| I["ig-downloader --setup"]
+    I --> J[Playwright opens Chromium]
+    J --> K[User logs into Instagram]
+    K --> L[Script extracts sessionid]
+    L --> M[Saved to ~/.ig-downloader/config.json]
+    M --> E
+
+    H -->|NO| N{Apify dataset or toon file available?}
+    N -->|YES| O["ig-downloader --dataset ID --api-token TOKEN -u USER -o ./dir"]
+    O --> P[OR]
+    P --> Q["ig-downloader --toon-file ./data.txt -u USER -o ./dir"]
+    Q --> E
+
+    N -->|NO| R[Inform human: Need Instagram sessionid or Apify dataset. Run --setup or provide --sessionid]
 ```
 
 **Rule**: Never recommend `--login` mode — it is BROKEN (Meta deprecated
