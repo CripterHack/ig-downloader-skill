@@ -1,52 +1,52 @@
 #!/usr/bin/env python3
 """
-Instagram Downloader — Apify + instagrapi hybrid media downloader
-==================================================================
-Downloads all media (reels MP4, carousels JPG, photos JPG) from an
-Instagram profile using Apify Actor data as the primary source and
-instagrapi GQL as an enhancement for full carousel extraction.
+Instagram Downloader v2.0 — Sessionid + Apify hybrid media downloader
+======================================================================
+Downloads all media (reels MP4, carousel JPG, photo JPG) from an
+Instagram profile. Supports three operation modes:
 
-Two input modes:
-  1. Apify Dataset API (requires APIFY_API_TOKEN)
-  2. Toon/YAML file from MCP tool output (no token needed)
+  1. Sessionid (instagrapi) — Full access via Instagram session cookie.
+     Downloads ALL items (no date cutoff). Full carousel extraction.
+     Requires browser login once.
+     → Flags: --sessionid STR, -u/--username STR
+
+  2. Apify (legacy) — Uses Apify Actor dataset as source.
+     No login needed. GQL enhancement for recent carousels (<4 weeks).
+     → Flags: --dataset ID --api-token KEY | --toon-file PATH
+
+  3. Setup wizard — Opens browser, captures sessionid, saves to config.
+     → Flag: --setup
 
 For carousels:
-  - Tries instagrapi GQL first (no login, recent posts only ~3 weeks)
-  - If GQL succeeds: downloads ALL carousel images (_01.jpg ... _0N.jpg)
-  - If GQL fails: falls back to Apify thumbnail_url (first image only)
-
-For reels/photos:
-  - Uses Apify dataset URLs directly (requests works fine)
+  - Sessionid mode: always extracts ALL images via media_info()
+  - Apify mode: tries GQL first (~3w), falls back to single thumbnail
+  - Setup mode: walks user through login → captures sessionid
 
 Usage:
-  # Mode 1: Direct from Apify dataset (with API token)
-  python instagram_downloader.py \\
-      --dataset <DATASET_ID> \\
-      --api-token apify_api_xxx \\
-      --profile username \\
-      --date-start YYYY-MM-DD --date-end YYYY-MM-DD \\
+  # Mode 1: Sessionid (direct flag)
+  python instagram_downloader.py -u username --sessionid "1234..."
       --output ./instagram_downloads
 
-  # Mode 2: From MCP toon-file (no token)
+  # Mode 1: Sessionid (from config, no flag needed)
+  python instagram_downloader.py -u username --output ./instagram_downloads
+
+  # Mode 1: Sessionid (from env var)
+  python instagram_downloader.py -u username --output ./instagram_downloads
+
+  # Mode 2: Apify dataset (with API token)
   python instagram_downloader.py \\
-      --toon-file ./dataset_output.txt \\
-      --profile username \\
-      --date-start YYYY-MM-DD --date-end YYYY-MM-DD \\
+      --dataset <DATASET_ID> --api-token apify_api_xxx \\
+      -u username --date-start YYYY-MM-DD --date-end YYYY-MM-DD \\
       --output ./instagram_downloads
 
-  # Filter only reels
+  # Mode 2: Apify toon-file (no token)
   python instagram_downloader.py \\
       --toon-file ./data.txt \\
-      --profile username \\
-      --type reel \\
+      -u username --type reel --own-only \\
       --output ./reels_only
 
-  # Own posts only (filter mentions)
-  python instagram_downloader.py \\
-      --toon-file ./data.txt \\
-      --profile username \\
-      --own-only \\
-      --output ./own_posts
+  # Mode 3: Setup wizard (first time)
+  python instagram_downloader.py --setup
 """
 import os, sys, re, json, argparse
 from datetime import datetime, timezone, date
