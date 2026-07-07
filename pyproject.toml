@@ -1,10 +1,10 @@
 [build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "ig-downloader-skill"
-version = "2.2.0"
+version = "2.2.1"
 description = "Download Instagram media (reels, carousels, photos) via sessionid cookie + Playwright setup or Apify dataset fallback"
 readme = "README.md"
 license = {text = "GPL-2.0-only"}
