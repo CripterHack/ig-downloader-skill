@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-07-07
+
+### Added
+
+- **setup:** add Playwright-based interactive setup with Chromium ([94bfc53](https://github.com/CripterHack/ig-downloader-skill/commit/94bfc53))
+- **config:** add Chrome cookie extraction, config management, and interactive setup ([cbac97f](https://github.com/CripterHack/ig-downloader-skill/commit/cbac97f))
+- add SKILL.md for Claude/OpenCoder agent integration ([724f72d](https://github.com/CripterHack/ig-downloader-skill/commit/724f72d))
+- add Instagram downloader CLI script v1.1.0 ([c81ecbb](https://github.com/CripterHack/ig-downloader-skill/commit/c81ecbb))
+
+### Fixed
+
+- **release:** specify remote branch for git push in workflow_run context ([78f11ff](https://github.com/CripterHack/ig-downloader-skill/commit/78f11ff))
+- replace deprecated setuptools.backends._legacy with setuptools.build_meta ([0f47ced](https://github.com/CripterHack/ig-downloader-skill/commit/0f47ced))
+- **docs:** update script docstring to v2.2, remove broken login mode promotion, add warning ([0f68646](https://github.com/CripterHack/ig-downloader-skill/commit/0f68646))
+- **cli:** add -u short alias for --username flag ([d6ee6ae](https://github.com/CripterHack/ig-downloader-skill/commit/d6ee6ae))
+
+### Other
+
+- **project:** enforce global-only opencode and add auto-release workflow ([9482284](https://github.com/CripterHack/ig-downloader-skill/commit/9482284))
+- add GitHub Actions workflow — pytest matrix (3.10-3.12), CLI verification, import check ([d816ab1](https://github.com/CripterHack/ig-downloader-skill/commit/d816ab1))
+- **readme:** add Mermaid data flow and Playwright sequence diagrams ([2cd27ea](https://github.com/CripterHack/ig-downloader-skill/commit/2cd27ea))
+- **agents:** replace ASCII decision tree with Mermaid flowchart ([7cd2253](https://github.com/CripterHack/ig-downloader-skill/commit/7cd2253))
+- **skill:** replace ASCII architecture with Mermaid diagrams (modes, sessionid flow, setup chain) ([7f4d72e](https://github.com/CripterHack/ig-downloader-skill/commit/7f4d72e))
+- **readme:** update README.md to v2.2 — remove login references, add broken login warning, promote Playwright ([9afa78c](https://github.com/CripterHack/ig-downloader-skill/commit/9afa78c))
+- **skill:** update SKILL.md to v2.2 — remove login mode, promote sessionid + Playwright setup ([97cf4c9](https://github.com/CripterHack/ig-downloader-skill/commit/97cf4c9))
+- bump pyproject.toml to v2.2.0, add playwright dependency ([cb85b59](https://github.com/CripterHack/ig-downloader-skill/commit/cb85b59))
+- **agents:** add AGENTS.md with mode selection logic, decision tree, and agent instructions ([88f3793](https://github.com/CripterHack/ig-downloader-skill/commit/88f3793))
+- **changelog:** add v2.2.0 entry for Playwright interactive setup ([857fd1c](https://github.com/CripterHack/ig-downloader-skill/commit/857fd1c))
+- **readme:** update README.md to v2.1 — login mode, authentication docs, updated FAQ ([a160c42](https://github.com/CripterHack/ig-downloader-skill/commit/a160c42))
+- **skill:** update SKILL.md to v2.1 — login mode with 2FA, challenge handling, saved sessions, 4-mode architecture ([af6e105](https://github.com/CripterHack/ig-downloader-skill/commit/af6e105))
+- **changelog:** add v2.0.0 entry — sessionid mode, setup wizard, config management, Chrome cookie extraction ([e352843](https://github.com/CripterHack/ig-downloader-skill/commit/e352843))
+- **readme:** rewrite README.md for v2.0 — sessionid quick-start, three-mode comparison, setup wizard, cookie extraction guide ([b0ada50](https://github.com/CripterHack/ig-downloader-skill/commit/b0ada50))
+- **skill:** rewrite SKILL.md for v2.0 — sessionid mode, setup wizard, three-mode architecture, config management ([4e91ce8](https://github.com/CripterHack/ig-downloader-skill/commit/4e91ce8))
+- **script:** update docstring for v2.0 three-mode architecture (sessionid, Apify, setup) ([19129ee](https://github.com/CripterHack/ig-downloader-skill/commit/19129ee))
+- remove backup files, add to .gitignore ([5e26048](https://github.com/CripterHack/ig-downloader-skill/commit/5e26048))
+- add unit tests for parser, normalizer, and filter logic ([5c1991f](https://github.com/CripterHack/ig-downloader-skill/commit/5c1991f))
+- add GitHub issue and PR templates ([c704928](https://github.com/CripterHack/ig-downloader-skill/commit/c704928))
+- add CHANGELOG.md with version history ([2c1b84c](https://github.com/CripterHack/ig-downloader-skill/commit/2c1b84c))
+- add CONTRIBUTING.md with contribution guidelines ([ce29675](https://github.com/CripterHack/ig-downloader-skill/commit/ce29675))
+- add comprehensive README with architecture, usage, and troubleshooting ([04a8196](https://github.com/CripterHack/ig-downloader-skill/commit/04a8196))
+- add pyproject.toml and requirements.txt ([6035e89](https://github.com/CripterHack/ig-downloader-skill/commit/6035e89))
+- add LICENSE (GPLv2) and .gitignore ([0509221](https://github.com/CripterHack/ig-downloader-skill/commit/0509221))
+
 ## [2.2.1] - 2026-07-07
 
 ### Fixed
