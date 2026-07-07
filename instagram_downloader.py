@@ -1,37 +1,38 @@
 #!/usr/bin/env python3
 """
-Instagram Downloader v2.1 — Login + Sessionid + Apify media downloader
-========================================================================
+Instagram Downloader v2.2 — Sessionid + Apify media downloader
+================================================================
 Downloads all media (reels MP4, carousel JPG, photo JPG) from an
-Instagram profile. Supports four operation modes:
+Instagram profile. Supports three operation modes:
 
-  1. Login (instagrapi, recommended) — Full username/password login.
-     Handles 2FA and challenge codes (SMS/email). Saves session for
-     future use. Access public AND private profiles (if you follow them).
-     → Flags: --login [--password STR] [--totp CODE]
+  1. Sessionid (instagrapi, recommended) — Full access via Instagram
+     session cookie. No date cutoff. Full carousel extraction.
+     Requires browser login once (via --setup or manual cookie).
+     → Flags: --sessionid STR | --setup
 
-  2. Sessionid (instagrapi) — Full access via Instagram session cookie.
-     No date cutoff. Full carousel extraction. Requires browser login once.
-     → Flags: --sessionid STR
-
-  3. Apify (no login) — Uses Apify Actor dataset as source.
+  2. Apify (no login) — Uses Apify Actor dataset as source.
      GQL enhancement for recent carousels (<4 weeks).
      → Flags: --dataset ID --api-token KEY | --toon-file PATH
 
-  4. Setup wizard — Opens browser, captures sessionid, saves to config.
+  3. Setup wizard — Opens Playwright-controlled browser, detects
+     sessionid cookie automatically, saves to config.
      → Flag: --setup
 
 For carousels:
-  - Login / Sessionid modes: always extracts ALL images
+  - Sessionid mode: always extracts ALL images
   - Apify mode: tries GQL first (~3w), falls back to single thumbnail
   - Setup mode: walks user through login → captures sessionid
 
-Usage:
-  # Mode 1: Login (recommended)
-  python instagram_downloader.py --login -u username --output ./downloads
+⚠ NOTE: --login mode is BROKEN. Meta deprecated the underlying login
+  endpoint server-side (404). Use --setup or --sessionid instead.
+  The --login, --password, and --totp flags exist but do NOT work.
 
-  # Mode 1: Login with 2FA code
-  python instagram_downloader.py --login -u username --totp 123456
+Usage:
+  # Mode 1: Sessionid (from config file, after --setup)
+  python instagram_downloader.py -u username --output ./downloads
+
+  # Mode 1: Sessionid (direct flag)
+  python instagram_downloader.py -u username --sessionid "1234..."
       --output ./downloads
 
   # Mode 2: Sessionid (direct flag)
