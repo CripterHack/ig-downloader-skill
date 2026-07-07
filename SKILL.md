@@ -2,7 +2,8 @@
 name: instagram-downloader
 description: Download Instagram profile media (reels MP4, photos JPG, full carousel multi-image JPG) via sessionid (instagrapi), Apify dataset fallback, or interactive setup wizard. No password sharing required.
 version: 2.2.0
-author: opencode
+author: Edgar Zorrilla
+license: GPL-2.0
 type: skill
 category: data-extraction
 tags:

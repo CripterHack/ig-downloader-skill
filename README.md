@@ -7,19 +7,27 @@
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](LICENSE)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![instagrapi](https://img.shields.io/badge/instagrapi-2.18%2B-purple)](https://github.com/subzeroid/instagrapi)
+[![skills.sh](https://skills.sh/b/cripterhack/ig-downloader-skill)](https://skills.sh/cripterhack/ig-downloader-skill)
 
 ---
 
 ## 🚀 One-Click Install
 
-Choose your platform and run:
+Your AI agent already knows how to use this tool. Just install:
+
+```bash
+# Install the skill + CLI (recommended)
+npx skills add cripterhack/ig-downloader-skill
+```
+
+Or choose your platform:
 
 | Platform | Command |
 |----------|---------|
 | **Linux / macOS / Git Bash** | `curl -fsSL https://raw.githubusercontent.com/cripterhack/ig-downloader-skill/main/install.sh \| bash` |
 | **Windows PowerShell** | `iex (iwr -Uri https://raw.githubusercontent.com/cripterhack/ig-downloader-skill/main/install.ps1).Content` |
+| **npx (Skills.sh)** ⭐ | `npx skills add cripterhack/ig-downloader-skill` |
 | **From cloned repo** | `git clone https://github.com/cripterhack/ig-downloader-skill.git && cd ig-downloader-skill && ./install.sh` |
-| **npx (Skills.sh)** | `npx skills add cripterhack/ig-downloader-skill` |
 
 Each installer will:
 1. ✅ Install the Python package (`ig-downloader` CLI via `pip`)

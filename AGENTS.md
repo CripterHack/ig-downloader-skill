@@ -5,6 +5,7 @@ author: Edgar Zorrilla
 description: >
   Download Instagram profile media (reels MP4, carousels JPG, photos JPG) via
   sessionid cookie + Playwright setup or Apify dataset fallback.
+license: GPL-2.0
 type: agent-instructions
 category: data-extraction
 tags:
