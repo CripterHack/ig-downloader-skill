@@ -1,54 +1,62 @@
 #!/usr/bin/env python3
 """
-Instagram Downloader v2.0 — Sessionid + Apify hybrid media downloader
-======================================================================
+Instagram Downloader v2.1 — Login + Sessionid + Apify media downloader
+========================================================================
 Downloads all media (reels MP4, carousel JPG, photo JPG) from an
-Instagram profile. Supports three operation modes:
+Instagram profile. Supports four operation modes:
 
-  1. Sessionid (instagrapi) — Full access via Instagram session cookie.
-     Downloads ALL items (no date cutoff). Full carousel extraction.
-     Requires browser login once.
-     → Flags: --sessionid STR, -u/--username STR
+  1. Login (instagrapi, recommended) — Full username/password login.
+     Handles 2FA and challenge codes (SMS/email). Saves session for
+     future use. Access public AND private profiles (if you follow them).
+     → Flags: --login [--password STR] [--totp CODE]
 
-  2. Apify (legacy) — Uses Apify Actor dataset as source.
-     No login needed. GQL enhancement for recent carousels (<4 weeks).
+  2. Sessionid (instagrapi) — Full access via Instagram session cookie.
+     No date cutoff. Full carousel extraction. Requires browser login once.
+     → Flags: --sessionid STR
+
+  3. Apify (no login) — Uses Apify Actor dataset as source.
+     GQL enhancement for recent carousels (<4 weeks).
      → Flags: --dataset ID --api-token KEY | --toon-file PATH
 
-  3. Setup wizard — Opens browser, captures sessionid, saves to config.
+  4. Setup wizard — Opens browser, captures sessionid, saves to config.
      → Flag: --setup
 
 For carousels:
-  - Sessionid mode: always extracts ALL images via media_info()
+  - Login / Sessionid modes: always extracts ALL images
   - Apify mode: tries GQL first (~3w), falls back to single thumbnail
   - Setup mode: walks user through login → captures sessionid
 
 Usage:
-  # Mode 1: Sessionid (direct flag)
+  # Mode 1: Login (recommended)
+  python instagram_downloader.py --login -u username --output ./downloads
+
+  # Mode 1: Login with 2FA code
+  python instagram_downloader.py --login -u username --totp 123456
+      --output ./downloads
+
+  # Mode 2: Sessionid (direct flag)
   python instagram_downloader.py -u username --sessionid "1234..."
-      --output ./instagram_downloads
+      --output ./downloads
 
-  # Mode 1: Sessionid (from config, no flag needed)
-  python instagram_downloader.py -u username --output ./instagram_downloads
+  # Mode 2: Sessionid (from config, no flag needed)
+  python instagram_downloader.py -u username --output ./downloads
 
-  # Mode 1: Sessionid (from env var)
-  python instagram_downloader.py -u username --output ./instagram_downloads
-
-  # Mode 2: Apify dataset (with API token)
+  # Mode 3: Apify dataset (with API token)
   python instagram_downloader.py \\
       --dataset <DATASET_ID> --api-token apify_api_xxx \\
       -u username --date-start YYYY-MM-DD --date-end YYYY-MM-DD \\
-      --output ./instagram_downloads
+      --output ./downloads
 
-  # Mode 2: Apify toon-file (no token)
+  # Mode 3: Apify toon-file (no token)
   python instagram_downloader.py \\
       --toon-file ./data.txt \\
       -u username --type reel --own-only \\
       --output ./reels_only
 
-  # Mode 3: Setup wizard (first time)
+  # Mode 4: Setup wizard (first time)
   python instagram_downloader.py --setup
 """
-import os, sys, re, json, argparse
+import os, sys, re, json, argparse, getpass
 from datetime import datetime, timezone, date
 from urllib.parse import urlparse
 from pathlib import Path
@@ -74,9 +82,10 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 # ── Constants ─────────────────────────────────────────────────
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 CONFIG_DIR = Path.home() / ".ig-downloader"
 CONFIG_FILE = CONFIG_DIR / "config.json"
+SETTINGS_FILE = CONFIG_DIR / "settings.json"
 APIFY_API_BASE = "https://api.apify.com/v2"
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -340,6 +349,141 @@ class InstagrapiHelper:
 
 
 # ═══════════════════════════════════════════════════════════════
+#  LOGIN MODE (instagrapi full auth)
+# ═══════════════════════════════════════════════════════════════
+
+def challenge_code_handler(username, choice):
+    """Prompt user for challenge code (SMS/email verification)."""
+    print(f"\n  Instagram requires verification for @{username}.")
+    print(f"  A code was sent via {choice.name}.")
+    code = input("  Enter verification code: ").strip()
+    return code
+
+
+def load_or_login_client(args) -> tuple:
+    """Get an authenticated instagrapi Client.
+    
+    Priority:
+      1. Saved settings.json (from previous --login)
+      2. --sessionid flag
+      3. --login flag (full login)
+    
+    Returns (client, auth_method) or (None, reason) on failure.
+    """
+    if not HAS_INSTAGRAPI:
+        return None, "instagrapi not installed"
+
+    client = InstaClient()
+    client.delay_range = [1, 3]  # polite delay
+
+    # ── Priority 1: Saved settings ──
+    if not args.login and SETTINGS_FILE.exists():
+        try:
+            loaded = client.load_settings(str(SETTINGS_FILE))
+            client.login_by_sessionid(loaded.get("sessionid", ""))
+            return client, "saved settings"
+        except Exception:
+            client = InstaClient()
+            client.delay_range = [1, 3]
+
+    # ── Priority 2: Sessionid from any source ──
+    if not args.login:
+        sid, src = resolve_sessionid(args)
+        if sid:
+            try:
+                client.login_by_sessionid(sid)
+                return client, f"sessionid ({src})"
+            except Exception:
+                client = InstaClient()
+                client.delay_range = [1, 3]
+
+    # ── Priority 3: Full login ──
+    if args.login:
+        username = args.username
+        if not username:
+            username = input("  Instagram username: ").strip()
+            if not username:
+                return None, "no username provided"
+
+        password = args.password
+        if not password:
+            password = getpass.getpass(f"  Password for @{username}: ")
+
+        verification_code = args.totp or ""
+
+        print(f"  Logging in as @{username}...")
+        try:
+            client.challenge_code_handler = challenge_code_handler
+            logged_in = client.login(
+                username=username,
+                password=password,
+                verification_code=verification_code,
+            )
+            if logged_in:
+                # Save full session for future use
+                CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+                client.dump_settings(str(SETTINGS_FILE))
+                print(f"  [OK] Session saved to {SETTINGS_FILE}")
+                return client, "login"
+            return None, "login returned false"
+        except Exception as e:
+            return None, f"login failed: {e}"
+
+    return None, "no auth method available"
+
+
+def instagrapi_medias_to_items(medias: list) -> list[dict]:
+    """Convert instagrapi Media objects to normalized item dicts."""
+    items = []
+    for m in medias:
+        item = {
+            "shortcode": m.code,
+            "type": {1: "photo", 2: "reel", 8: "carousel"}.get(m.media_type, "unknown"),
+            "created_at": m.taken_at,
+            "created_at_str": m.taken_at.isoformat() if m.taken_at else "",
+            "author_handle": m.user.username if m.user else "unknown",
+            "video_url": getattr(m, "video_url", None),
+            "thumbnail_url": getattr(m, "thumbnail_url", None),
+            "raw": m,
+        }
+        items.append(item)
+    return items
+
+
+def download_from_session(client, username: str, args) -> dict:
+    """Download all media from an Instagram user via authenticated session."""
+    print(f"\n  Fetching media for @{username}...")
+    try:
+        user_id = client.user_id_from_username(username)
+    except Exception as e:
+        print(f"  ERROR: Cannot resolve @{username}: {e}")
+        return {"ok": 0, "skip": 0, "fail": 0, "total": 0}
+
+    # If the user wants their OWN posts, we can get them from user_medias
+    # If the user wants a DIFFERENT profile, user_medias still works (public)
+    try:
+        medias = client.user_medias(user_id, amount=0)  # 0 = all
+    except Exception as e:
+        print(f"  ERROR fetching media for @{username}: {e}")
+        return {"ok": 0, "skip": 0, "fail": 0, "total": 0}
+
+    if not medias:
+        print(f"  No posts found for @{username}.")
+        return {"ok": 0, "skip": 0, "fail": 0, "total": 0}
+
+    print(f"  {len(medias)} posts fetched\n")
+
+    # Convert to standard format, then use existing processing pipeline
+    items = instagrapi_medias_to_items(medias)
+
+    # We set profile = username so OWN/MENTION classification works
+    args.profile = args.profile or username
+
+    # Process via existing pipeline (instagrapi helper disabled to avoid GQL overlap)
+    return process_items(items, args, insta_helper=None)
+
+
+# ═══════════════════════════════════════════════════════════════
 #  CLI
 # ═══════════════════════════════════════════════════════════════
 
@@ -353,7 +497,7 @@ def build_parser():
     # Input sources (mutually exclusive)
     src = p.add_argument_group("Input Sources (choose one)")
     src.add_argument("--dataset", metavar="ID",
-        help="Apify dataset ID (e.g. 11VioLZi3oOUkyc5h). Requires --api-token.")
+        help="Apify dataset ID (e.g. DATASET_ID). Requires --api-token.")
     src.add_argument("--api-token", metavar="KEY",
         help="Apify API token (required with --dataset).")
     src.add_argument("--toon-file", metavar="PATH",
@@ -389,12 +533,18 @@ def build_parser():
     p.add_argument("--no-verify", action="store_true",
         help="Skip SSL verification (not recommended).")
 
-    # Sessionid (will be used in v2.0)
+    # Login / Session modes
+    p.add_argument("--login", action="store_true",
+        help="Full login mode: username/password (handles 2FA, challenges).")
+    p.add_argument("--password", metavar="PASS",
+        help="Instagram password (for --login). Omits to prompt securely.")
+    p.add_argument("--totp", metavar="CODE",
+        help="2FA verification code (for --login with two-factor auth).")
     p.add_argument("--sessionid", metavar="COOKIE",
         help="Instagram sessionid cookie (bypasses Apify).")
     p.add_argument("--setup", action="store_true",
         help="Interactive login: open browser, save sessionid to config.")
-    p.add_argument("--username", metavar="HANDLE",
+    p.add_argument("-u", "--username", metavar="HANDLE",
         help="Target Instagram username.")
     p.add_argument("--version", action="version",
         version=f"ig-downloader v{VERSION}",
@@ -735,66 +885,111 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
-    # ── Validate input source ──
+    # ── Detect operation mode ──
+    use_login = args.login
     use_api = bool(args.dataset)
     use_toon = bool(args.toon_file)
+    use_setup = args.setup
 
-    if use_api and use_toon:
-        print("ERROR: Use --dataset OR --toon-file, not both.")
-        sys.exit(1)
-    if not use_api and not use_toon:
-        print("ERROR: Provide --dataset (with --api-token) OR --toon-file.")
-        sys.exit(1)
-    if use_api and not args.api_token:
-        print("ERROR: --dataset requires --api-token.")
-        sys.exit(1)
-    if use_toon and not os.path.isfile(args.toon_file):
-        print(f"ERROR: Toon file not found: {args.toon_file}")
-        sys.exit(1)
+    has_sessionid = bool(args.sessionid) or bool(os.environ.get("SESSIONID"))
+    if not has_sessionid:
+        cfg = load_config()
+        has_sessionid = bool(cfg.get("sessionid"))
+    has_saved_settings = SETTINGS_FILE.exists()
 
-    # ── Own-only / mentions-only validation ──
-    if args.own_only and args.mentions_only:
-        print("ERROR: Cannot use --own-only and --mentions-only together.")
-        sys.exit(1)
-    if (args.own_only or args.mentions_only) and not args.profile:
-        print("ERROR: --own-only / --mentions-only requires --profile.")
-        sys.exit(1)
-
-    # ── Instagrapi init ──
-    insta_helper = None
-    if not args.no_instagrapi and HAS_INSTAGRAPI:
-        insta_helper = InstagrapiHelper()
-        print("✓ instagrapi available — carousel multi-image extraction enabled")
-    elif args.no_instagrapi:
-        print("  --no-instagrapi: using Apify thumbnails only for carousels")
-    else:
-        print("  instagrapi not installed. Install with: pip install instagrapi")
-        print("  Carousel posts will use Apify thumbnails (first image only).\n")
-
-    # ── Fetch data ──
-    print("\nFetching data...")
-    try:
-        if use_api:
-            print(f"  Mode: Apify API → dataset {args.dataset}")
-            raw_items = fetch_from_api(args.dataset, args.api_token)
+    # Determine which mode we're in
+    if use_setup:
+        # ── Mode S: Interactive setup ──
+        sid = interactive_setup(args)
+        if sid and args.username:
+            # Got sessionid and have username: continue to session mode
+            use_login = False
+            args.sessionid = sid
+            has_sessionid = True
+        elif sid:
+            print("\n  Setup complete. Re-run with --username to download.")
+            return
         else:
-            print(f"  Mode: Toon file → {args.toon_file}")
-            raw_items = fetch_from_toon(args.toon_file)
-    except Exception as e:
-        print(f"ERROR fetching data: {e}")
+            sys.exit(1)
+
+    session_mode = has_saved_settings or has_sessionid or use_login
+
+    if session_mode:
+        # ── Mode 1/2: Session or Login ──
+        if not args.username:
+            print("ERROR: --username is required for login/session mode.")
+            print("  python instagram_downloader.py --login -u USERNAME")
+            sys.exit(1)
+
+        client, method = load_or_login_client(args)
+        if client is None:
+            print(f"ERROR: Cannot authenticate: {method}")
+            if not HAS_INSTAGRAPI:
+                print("  Install instagrapi: pip install instagrapi")
+            sys.exit(1)
+
+        print(f"\n  ✅ Authenticated via {method}")
+        result = download_from_session(client, args.username, args)
+
+    elif use_api or use_toon:
+        # ── Mode 3: Apify (legacy) ──
+        if use_api and use_toon:
+            print("ERROR: Use --dataset OR --toon-file, not both.")
+            sys.exit(1)
+        if use_api and not args.api_token:
+            print("ERROR: --dataset requires --api-token.")
+            sys.exit(1)
+        if use_toon and not os.path.isfile(args.toon_file):
+            print(f"ERROR: Toon file not found: {args.toon_file}")
+            sys.exit(1)
+
+        # Own-only / mentions-only validation
+        if args.own_only and args.mentions_only:
+            print("ERROR: Cannot use --own-only and --mentions-only together.")
+            sys.exit(1)
+        if (args.own_only or args.mentions_only) and not args.profile:
+            print("ERROR: --own-only / --mentions-only requires --profile.")
+            sys.exit(1)
+
+        # Instagrapi helper for GQL carousel enhancement
+        insta_helper = None
+        if not args.no_instagrapi and HAS_INSTAGRAPI:
+            insta_helper = InstagrapiHelper()
+            print("✓ instagrapi available — carousel multi-image extraction enabled")
+        elif args.no_instagrapi:
+            print("  --no-instagrapi: using Apify thumbnails only for carousels")
+        else:
+            print("  instagrapi not installed. Install with: pip install instagrapi")
+            print("  Carousel posts use Apify thumbnails (first image only).\n")
+
+        # Fetch data
+        print("\nFetching data...")
+        try:
+            if use_api:
+                print(f"  Mode: Apify API → dataset {args.dataset}")
+                raw_items = fetch_from_api(args.dataset, args.api_token)
+            else:
+                print(f"  Mode: Toon file → {args.toon_file}")
+                raw_items = fetch_from_toon(args.toon_file)
+        except Exception as e:
+            print(f"ERROR fetching data: {e}")
+            sys.exit(1)
+
+        if not raw_items:
+            print("ERROR: No items found in data source.")
+            sys.exit(1)
+
+        print(f"  {len(raw_items)} raw items loaded\n")
+        result = process_items(raw_items, args, insta_helper)
+
+    else:
+        print("ERROR: No input source specified.")
+        print("  Use --login, --sessionid, --dataset, --toon-file, or --setup.")
+        print("  Run --help for detailed usage.")
         sys.exit(1)
-
-    if not raw_items:
-        print("ERROR: No items found in data source.")
-        sys.exit(1)
-
-    print(f"  {len(raw_items)} raw items loaded\n")
-
-    # ── Process ──
-    result = process_items(raw_items, args, insta_helper)
 
     # ── Exit code ──
-    if result["fail"] > 0:
+    if result and result.get("fail", 0) > 0:
         sys.exit(2)
 
 
