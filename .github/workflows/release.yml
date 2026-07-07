@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  # ── Automatic: triggered after CI passes on main ─────────────
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+
+  # ── Manual: trigger from Actions tab with optional bump ─────
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump (auto = derived from conventional commits)"
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+
+# ── Concurrency ──────────────────────────────────────────────
+# Serialise releases so only one runs at a time.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  PYTHONUTF8: 1
+
+# ──────────────────────────────────────────────────────────────
+jobs:
+  release:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # ── 1. Checkout with full history (needed for tag comparison) ──
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # workflow_run → use the exact SHA that CI passed on;
+          # workflow_dispatch → default ref.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      # In workflow_run the checkout is detached — ensure we are on a
+      # real branch so the later git commit + git push succeeds.
+      - name: Ensure branch context
+        if: github.event_name == 'workflow_run'
+        run: |
+          git branch -f main HEAD
+          git checkout main
+
+      # ── 2. Python tooling ─────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ── 3. Generate release notes + version bump ──────────────────
+      - name: Generate release
+        id: release
+        env:
+          INPUT_BUMP: ${{ inputs.bump || 'auto' }}
+        run: python scripts/auto_release.py
+
+      # ── 4. Early exit if nothing to release ───────────────────────
+      - name: Skip if no release needed
+        if: steps.release.outputs.skip_reason != ''
+        run: |
+          echo "⏭️ Skipping release: ${{ steps.release.outputs.skip_reason }}"
+
+      # ── 5. Commit version bump + CHANGELOG update ─────────────────
+      - name: Commit changes
+        if: steps.release.outputs.skip_reason == ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit \
+            -m "chore(release): ${{ steps.release.outputs.tag_name }} [skip ci]" \
+            -m "${{ steps.release.outputs.tag_name }}"
+          git push
+
+      # ── 6. Create annotated tag ────────────────────────────────────
+      - name: Tag release
+        if: steps.release.outputs.skip_reason == ''
+        run: |
+          git tag -a "${{ steps.release.outputs.tag_name }}" \
+            -m "Release ${{ steps.release.outputs.tag_name }}"
+          git push origin "${{ steps.release.outputs.tag_name }}"
+
+      # ── 7. Create GitHub Release ───────────────────────────────────
+      - name: Create GitHub Release
+        if: steps.release.outputs.skip_reason == ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag_name }}
+          body_path: ${{ steps.release.outputs.changelog_path }}
+          generate_release_notes: false
+          name: ${{ steps.release.outputs.tag_name }}

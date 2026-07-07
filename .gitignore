@@ -44,3 +44,6 @@ credentials.json
 *.orig
 *.v2
 .instagram_downloader_*
+
+# OpenCode — todo debe ir en C:\Users\edgar\.opencode\
+.opencode/
