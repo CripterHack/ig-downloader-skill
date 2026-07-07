@@ -1,357 +1,332 @@
 ---
 name: instagram-downloader
-description: Download Instagram profile media (reels MP4, photos JPG, full carousel multi-image JPG) via Apify + instagrapi hybrid. No login required. Supports filters: date range, post type, own vs mentions.
-version: 1.1.0
+description: Download Instagram profile media (reels MP4, photos JPG, full carousel multi-image JPG) via sessionid (instagrapi), Apify dataset fallback, or interactive setup wizard. No password sharing required.
+version: 2.0.0
 author: opencode
 type: skill
 category: data-extraction
 tags:
   - instagram
-  - apify
   - instagrapi
+  - sessionid
+  - apify
   - download
   - media
   - carousel
   - scraping
-  - gql
 ---
 
-# Instagram Downloader Skill
+# Instagram Downloader Skill v2.0
 
-> **Purpose**: Download all media (reels, carousels with all images, photos) from an Instagram profile using a hybrid Apify + instagrapi approach. Supports filtering by date range, post type, authorship (own posts vs mentions), and flat or date-organized output.
+> **Purpose**: Download all media (reels MP4, carousels with ALL images, photos JPG) from an Instagram profile. Three operation modes: sessionid (full access), Apify (no login, limited), setup wizard (interactive browser login).
 
 ---
 
-## Why This Approach?
-
-**The Problem**: Popular Instagram download tools (`instaloader`, `gallery-dl`) consistently fail with 403/NotFound errors because Instagram aggressively blocks scraping and requires session cookies that expire. Additionally, the standard Instagram web page no longer embeds JSON data (`__INITIAL_STATE__`, `__sharedData__`) — it's fully client-side rendered.
-
-**The Hybrid Solution**:
+## Operation Modes
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                        HYBRID ARCHITECTURE                               │
-│                                                                          │
-│  1. Apify Actor (unseenuser/IG-posts)                                    │
-│     └─→ Scrapes profile catalog (shortcodes, types, dates)               │
-│        └─→ Provides fallback CDN URLs for ALL items                      │
-│                                                                          │
-│  2. instagrapi GQL (per item, for carousels)                             │
-│     └─→ Fetches ALL images in each carousel                             │
-│        └─→ Handles fbcdn.net CDN that blocks requests.get()              │
-│                                                                          │
-│  3. Falls back to Apify URLs if GQL unavailable (old posts)              │
-│     └─→ Reels/photos: always use Apify URLs (works fine)                 │
-│        └─→ Carousels: GQL → multi-image; Apify → single thumbnail       │
-└──────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                          INSTAGRAM DOWNLOADER v2.0                          │
+│                                                                              │
+│  ┌─────────────────────┐   ┌─────────────────────┐   ┌──────────────────┐   │
+│  │  Mode 1: Sessionid  │   │  Mode 2: Apify      │   │  Mode 3: Setup   │   │
+│  │                     │   │  (Legacy)           │   │  (Wizard)        │   │
+│  │  instagrapi         │   │  Apify Actor        │   │  Opens browser   │   │
+│  │  login_by_sessionid │   │  dataset            │   │  Polls for login │   │
+│  │  user_medias()      │   │  GQL enhancement    │   │  Saves config    │   │
+│  │  media_info()       │   │  for carousels      │   │                  │   │
+│  │                     │   │                     │   │  One-time setup  │   │
+│  │  ✅ Full catalog    │   │  ✅ No login        │   │                  │   │
+│  │  ✅ All carousels   │   │  ❌ Date cutoff     │   │  Output:         │   │
+│  │  ✅ Any date        │   │  ❌ 1st img only    │   │  config.json     │   │
+│  │  ✅ No watermark    │   │     (old posts)     │   │  with sessionid  │   │
+│  │  ──────────────     │   │  ────────────────   │   │                  │   │
+│  │  Requires:          │   │  Requires:           │   │  `--setup` flag │   │
+│  │  sessionid cookie   │   │  Apify dataset ID   │   │                  │   │
+│  └─────────────────────┘   └─────────────────────┘   └──────────────────┘   │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Key advantages**:
-- ✅ **No Instagram login required** — neither Apify nor GQL needs auth
-- ✅ **Full carousel extraction** — up to 20 images per carousel (vs only first image from Apify)
-- ✅ **Fresh CDN URLs** — GQL returns live fbcdn.net links
-- ✅ **No watermark on reels** (`video_url_no_watermark` from Apify)
-- ✅ **Graceful fallback** — if GQL fails (old posts, network), Apify data is used
-- ✅ **Works from OpenCoder via MCP or standalone**
+### Mode Comparison
+
+| Aspect | Sessionid 🥇 | Apify (legacy) | Setup Wizard |
+|--------|-------------|----------------|--------------|
+| **Login** | Cookie `sessionid` | None | Interactive browser |
+| **All posts** | ✅ Yes | ✅ Yes | N/A (setup only) |
+| **Old posts** | ✅ Yes | ❌ GQL < 4 weeks | N/A |
+| **Carousels** | ✅ All images | ❌ 1st image only (old) | N/A |
+| **Cost** | $0 | ~$0.03/run | $0 |
+| **Speed** | Fast (instagrapi) | Fast (direct URLs) | N/A |
+| **Complexity** | Cookie extraction | Apify account | 1 click |
 
 ---
 
 ## Architecture
 
-### Data Flow
+### Mode 1: Sessionid (Primary)
 
 ```
-Apify Actor ──→ dataset ──→ Python script ──→ Downloads
-(unseenuser/     (items:        │
- IG-posts)       shortcodes,    ├── Reels → Apify MP4 URL → requests.get() ✅
-                 types,         ├── Photos → Apify JPG URL → requests.get() ✅
-                 dates)         └── Carousels:
-                                    ├── Try instagrapi GQL (no login)
-                                    │   └── Success → ALL images (_01.jpg.._0N.jpg)
-                                    │              → Download via instagrapi public.get()
-                                    └── Fail → Apify thumbnail_url (first image only)
-                                               → Download via requests.get()
+User provides ──→ sessionid cookie
+                        │
+                        ▼
+              instagrapi.login_by_sessionid()
+                        │
+                        ▼
+              cl.user_id_from_username(username)
+                        │
+                        ▼
+              cl.user_medias(user_id, amount=0)
+                  (fetches ALL posts)
+                        │
+              ┌─────────┴──────────┐
+              ▼                    ▼
+         cl.photo_download()   cl.video_download()
+         (photos/carousels)    (reels)
+              │                    │
+              ▼                    ▼
+         <output_dir>/YYYY-MM-DD/<shortcode>/
+             ├── <shortcode>.mp4          (reel)
+             ├── <shortcode>.jpg          (photo)
+             ├── <shortcode>_01.jpg       (carousel img 1/N)
+             ├── <shortcode>_02.jpg       (carousel img 2/N)
+             ├── ...
+             └── post_info.txt            (metadata)
 ```
 
-### Data Fields (from Actor `unseenuser/IG-posts`)
+### Sessionid Source Priority
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `shortcode` | string | Instagram post ID |
-| `type` | string | `reel` \| `carousel` \| `photo` |
-| `created_at` | string | ISO 8601 datetime |
-| `author_handle` | string | Post author's handle (flat key) |
-| `video_url_no_watermark` | string | MP4 URL for reels (flat key) |
-| `thumbnail_url` | string | JPG thumbnail for carousels/photos |
+The script resolves the sessionid in this order:
 
-> **⚠ Note**: Apify API returns nested JSON (`author.handle`). MCP `get-dataset-items` flattens keys. The script handles both.
+1. **`--sessionid` CLI flag** — highest priority, one-shot
+2. **`SESSIONID` environment variable** — for CI/automation
+3. **Config file** (`~/.ig-downloader/config.json`) — persistent, set by `--setup`
+4. **Chrome cookies** (automatic extraction from browser) — if user is logged in
+
+### Mode 2: Apify (Fallback)
+
+Same as v1.x: Apify Actor → dataset → toon file → download (with GQL carousel enhancement).
 
 ---
 
 ## Prerequisites
 
-- **Python 3.7+**
-- **`requests`**: `pip install requests`
-- **`instagrapi`** (optional, for full carousel extraction): `pip install instagrapi`
-- **Apify account** (free tier) — only for running the Actor
-- **OpenCoder** with Apify MCP tools (simplest path)
+### Sessionid Mode
 
-> **Without instagrapi**: The script works, but carousels only get the first image (Apify `thumbnail_url`). Install it for multi-image extraction.
+- **Python 3.7+**
+- **`instagrapi >= 2.0.0`**: `pip install instagrapi`
+- **Instagram `sessionid` cookie** (from browser DevTools → Application → Cookies)
+- **Chrome** (optional, for auto-extraction with `--setup`)
+
+### Apify Mode (Legacy)
+
+- **`requests`**: `pip install requests`
+- **`instagrapi`** (optional, for carousel enhancement): `pip install instagrapi`
+- **Apify account** (free tier)
+
+---
+
+## Getting the Sessionid Cookie
+
+### Method A: Manual (1 minute)
+
+1. Open Chrome, go to `https://www.instagram.com`
+2. Log in to Instagram
+3. Press **F12** → **Application** → **Cookies** → `www.instagram.com`
+4. Find `sessionid` — copy its value
+5. Run: `python instagram_downloader.py -u username --sessionid "YOUR_SESSIONID"`
+
+### Method B: Interactive Setup (recommended)
+
+```bash
+python instagram_downloader.py --setup
+```
+
+This opens Instagram in your browser. Log in, and the script automatically detects the `sessionid` cookie, saves it to `~/.ig-downloader/config.json`, and exits. After that, no `--sessionid` flag needed.
+
+### Method C: Environment Variable
+
+```bash
+set SESSIONID=YOUR_SESSIONID
+python instagram_downloader.py -u username
+```
 
 ---
 
 ## Workflow
 
-### Step 1: Run the Apify Actor
-
-```javascript
-// Via MCP — search then run
-const actorInfo = await mcp_search-actors({ keywords: "instagram posts" });
-
-const result = await mcp_call-actor({
-  actor: "unseenuser/IG-posts",
-  input: {
-    usernames: ["<username>"],
-  },
-  waitSecs: 60,
-});
-```
-
-Result contains a `datasetId` (e.g. `<DATASET_ID>`).
-
-### Step 2: Get Dataset Items
-
-```javascript
-const datasetResult = await mcp_get-dataset-items({
-  datasetId: "<DATASET_ID>",
-  limit: 999,
-  clean: true,
-});
-```
-
-Output is saved to a temp file (toon/YAML format).
-
-### Step 3: Run the Download Script
+### Sessionid Mode (Fastest, Most Complete)
 
 ```bash
-# With instagrapi (carousels get all images)
-python instagram_downloader.py --toon-file <temp-file> \
-    --profile <username> \
-    --date-start YYYY-MM-DD \
-    --date-end YYYY-MM-DD \
-    --output ./instagram_downloads
+# One-time setup
+python instagram_downloader.py --setup
+
+# Then just download
+python instagram_downloader.py -u username -o ./instagram_downloads
 ```
 
-Or with Apify API token:
+### Apify Mode (No Login)
 
-```bash
-python instagram_downloader.py --dataset <DATASET_ID> \
-    --api-token apify_api_xxx \
-    --profile <username> \
-    --output ./instagram_downloads
+```python
+# Via MCP
+await mcp_call-actor({ actor: "unseenuser/IG-posts", input: { usernames: ["username"] } })
+await mcp_get-dataset-items({ datasetId: "<ID>", limit: 999, clean: true })
+
+# Then download
+python instagram_downloader.py --toon-file ./data.txt \
+    -u username \
+    --date-start YYYY-MM-DD --date-end YYYY-MM-DD \
+    -o ./instagram_downloads
 ```
 
 ---
 
 ## Script Reference
 
-**Location**: `instagram_downloader.py` (in same directory as this SKILL.md)
+**Location**: `instagram_downloader.py` (same directory)
 
 ### Command-Line Options
 
-#### Input Sources (choose one)
+#### Mode Selection (choose one or none)
 
 | Option | Description |
 |--------|-------------|
-| `--dataset ID` | Apify dataset ID to fetch from API |
+| `--sessionid STR` | Instagram sessionid cookie (one-shot, highest priority) |
+| `--setup` | Interactive setup: opens browser, polls for login, saves config |
+| `--dataset ID` | Apify dataset ID |
 | `--api-token KEY` | Apify API token (required with `--dataset`) |
-| `--toon-file PATH` | Path to toon/YAML file from MCP output |
+| `--toon-file PATH` | Apify dataset exported as JSON/YAML |
 
-#### Filters
+#### Files & Target
 
 | Option | Description |
 |--------|-------------|
-| `--profile HANDLE` | Target Instagram handle. Used to classify OWN vs MENTION. |
+| `-u / --username HANDLE` | Target Instagram handle (required for sessionid mode) |
+| `-o / --output DIR` | Output directory (default: `./instagram_downloads`) |
+| `--flat` | Flatten: single folder instead of `YYYY-MM-DD/shortcode/` |
+
+#### Filters (Apify mode only)
+
+| Option | Description |
+|--------|-------------|
 | `--date-start YYYY-MM-DD` | Earliest post date (inclusive) |
 | `--date-end YYYY-MM-DD` | Latest post date (inclusive) |
 | `--type {reel,carousel,photo,all}` | Filter by post type (default: all) |
-| `--own-only` | Only posts authored by `--profile` |
-| `--mentions-only` | Only posts from other accounts mentioning `--profile` |
-
-#### Output
-
-| Option | Description |
-|--------|-------------|
-| `--output DIR, -o DIR` | Output directory (default: `./instagram_downloads`) |
-| `--flat` | Flatten: single folder instead of `YYYY-MM-DD/shortcode/` |
-
-#### Instagrapi Control
-
-| Option | Description |
-|--------|-------------|
-| `--no-instagrapi` | Skip GQL carousel enhancement. Use Apify thumbnails only. |
+| `--own-only` | Only posts authored by `--username` |
+| `--mentions-only` | Only posts from other accounts mentioning `--username` |
 
 #### Misc
 
 | Option | Description |
 |--------|-------------|
 | `--no-verify` | Skip SSL verification (not recommended) |
+| `--version` | Show version and exit |
+| `--help` | Show help message |
 
 ### Default Output Structure
 
 ```
 instagram_downloads/
-├── YYYY-MM-DD/
-│   ├── <SHORTCODE>/                    # Reel
-│   │   ├── post_info.txt              # Metadata
-│   │   ├── <SHORTCODE>.mp4            # Reel video
-│   │   └── <SHORTCODE>_thumb.jpg      # Thumbnail
-│   ├── <SHORTCODE>/                   # Photo
-│   │   ├── post_info.txt
-│   │   └── <SHORTCODE>_01.jpg
-│   └── <SHORTCODE>/                   # Carousel (with GQL)
-│       ├── post_info.txt
-│       ├── <SHORTCODE>_01.jpg         # Image 1/N
-│       ├── <SHORTCODE>_02.jpg         # Image 2/N
-│       ├── ...
-│       └── <SHORTCODE>_0N.jpg         # Image N/N
-├── YYYY-MM-DD/
-│   └── ...
 └── YYYY-MM-DD/
-    └── ...
-```
-
-With `--flat`:
-```
-instagram_downloads/
-├── <SHORTCODE>.mp4
-├── <SHORTCODE>_thumb.jpg
-├── <SHORTCODE>_post_info.txt
-├── <SHORTCODE>_01.jpg
-├── <SHORTCODE>_02.jpg
-└── ...
+    ├── <SHORTCODE>/               # Reel
+    │   ├── <SHORTCODE>.mp4
+    │   ├── <SHORTCODE>.jpg        # Thumbnail
+    │   └── post_info.txt
+    ├── <SHORTCODE>/               # Photo
+    │   ├── <SHORTCODE>.jpg
+    │   └── post_info.txt
+    └── <SHORTCODE>/               # Carousel
+        ├── <SHORTCODE>.jpg        # First image (cl.photo_download)
+        ├── <SHORTCODE>_02.jpg     # Image 2/N (from media_info)
+        ├── <SHORTCODE>_03.jpg     # Image 3/N
+        ├── ...
+        └── post_info.txt
 ```
 
 ---
 
-## GQL Carousel Extraction Details
+## Sessionid Under the Hood
 
-### How It Works
+### Cookie Extraction
 
-1. For each carousel item, the script calls `instagrapi.media_info_gql(pk)` — this uses Instagram's GraphQL endpoint **without login**
-2. The response contains `resources[]` with one entry per carousel slide
-3. Each resource's `thumbnail_url` (fbcdn.net CDN) is extracted
-4. Images are downloaded using instagrapi's `public.get()` which has browser-grade headers
+The `--setup` flow:
+1. Opens `https://www.instagram.com` in the default browser via `webbrowser.open()`
+2. Polls the Chrome cookie SQLite database every 3 seconds
+3. Reads cookies using `sqlite3` + DPAPI key decryption (AES-GCM with no-authentication-tag)
+4. Once `sessionid` is detected, saves to `~/.ig-downloader/config.json`
+5. Closes automatically
 
-### Success Rate
+### Media Fetching
 
-| Factor | Details |
-|--------|---------|
-| **Posts < 3 weeks old** | ~100% GQL success, all images extracted |
-| **Posts 3-5 weeks old** | ~90% GQL success |
-| **Posts > 5 weeks old** | GQL likely fails → falls back to Apify thumbnail (first image only) |
-| **Timeout** | 20 seconds per GQL call; skipped if exceeded |
-| **Unavailable** | If `instagrapi` not installed, falls back silently |
+- `user_id_from_username()` → numeric user ID
+- `user_medias(user_id, amount=0)` → ALL media items (amount=0 means unlimited)
+- Each `Media` object has: `pk`, `code` (shortcode), `media_type` (1=photo, 2=video, 8=carousel), `taken_at` (datetime)
+- Carousels: `media_info(pk)` returns `carousel_media[]` with all resources
+- Downloads via `photo_download()` / `video_download()` with proper auth
 
-### Download Method
+### Config Storage
 
-| CDN Provider | Method | Status |
-|-------------|--------|--------|
-| `instagram.fX.fna.fbcdn.net` | instagrapi `public.get()` | ✅ 200 OK |
-| `instagram.fX.fna.fbcdn.net` | `requests.get()` with headers | ❌ 403 Forbidden |
-| `scontent.cdninstagram.com` | `requests.get()` with headers | ✅ 200 OK (Apify URLs) |
-| `video.cdninstagram.com` | `requests.get()` with headers | ✅ 200 OK (Apify URLs) |
+```json
+{
+  "sessionid": "YOUR_SESSIONID_COOKIE",
+  "created_at": "2026-07-07T22:00:00"
+}
+```
+
+Location: `~/.ig-downloader/config.json`
 
 ---
 
-## Filter Examples
+## Examples
 
-### Last month's reels only
+### Sessionid mode (from config, simplest)
 
 ```bash
-python instagram_downloader.py --toon-file ./data.txt \
-    --profile username \
+python instagram_downloader.py -u username -o ./downloads
+```
+
+### Sessionid mode (direct flag)
+
+```bash
+python instagram_downloader.py \
+    -u username \
+    --sessionid "1234567890%3Aabcdef" \
+    -o ./downloads
+```
+
+### Sessionid mode (environment variable)
+
+```bash
+set SESSIONID=1234567890%3Aabcdef
+python instagram_downloader.py -u username -o ./downloads
+```
+
+### Setup wizard (first time only)
+
+```bash
+python instagram_downloader.py --setup
+```
+
+### Apify mode (toon file, with filters)
+
+```bash
+python instagram_downloader.py \
+    --toon-file ./data.txt \
+    -u username \
     --type reel \
     --date-start YYYY-MM-DD \
-    --output ./reels_june
+    --date-end YYYY-MM-DD \
+    -o ./reels_only
 ```
 
-### Own posts only (exclude mentions)
+### Apify mode (API token)
 
 ```bash
-python instagram_downloader.py --toon-file ./data.txt \
-    --profile username \
-    --own-only \
-    --output ./own_posts
+python instagram_downloader.py \
+    --dataset <DATASET_ID> \
+    --api-token apify_api_xxx \
+    -u username \
+    -o ./downloads
 ```
-
-### Mentions only (posts by other accounts)
-
-```bash
-python instagram_downloader.py --toon-file ./data.txt \
-    --profile username \
-    --mentions-only \
-    --output ./mentions
-```
-
-### Carousels with instagrapi disabled
-
-```bash
-python instagram_downloader.py --toon-file ./data.txt \
-    --profile username \
-    --type carousel \
-    --no-instagrapi \
-    --output ./carousels_thumbnails
-```
-
----
-
-## Using without Apify API Token (MCP-only)
-
-1. **Search for the Actor** in the Apify Store: `Search → "unseenuser/IG-posts"`
-2. **Run it** via `mcp_call-actor` with the target username
-3. **Fetch items** via `mcp_get-dataset-items`. Output saves to a temp file
-4. **Run the script** with `--toon-file` pointing to that temp file
-
-The temp file path is shown in the MCP output (e.g. `C:\Users\<user>\.local\share\opencode\tool-output\tool_f39b...`).
-
----
-
-## Known Issues & Gotchas
-
-### 1. CDN URLs Expire
-Apify media URLs expire after some time. Download soon after fetching. Apify URLs handle `requests.get()` fine.
-
-### 2. Carousel GQL Cutoff
-instagrapi GQL works **without login only for recent posts** (~last 4-5 weeks). Older posts will fall back to the Apify single-thumbnail. This is a limitation of the public GraphQL endpoint — Instagram's A1 API (used by `media_info()`) requires login. If you need full carousel extraction for older posts, consider providing Instagram login credentials for the `instagrapi.Client`.
-
-### 3. fbcdn.net CDN Blocks Direct Requests
-The fbcdn.net URLs from GQL return 403 with plain `requests.get()`, even with full browser headers. The script uses instagrapi's `public.get()` (a pre-configured `requests.Session` with Instagram headers) which works.
-
-### 4. Actor May Not Return Everything
-Free-tier Apify Actors have limits. For large profiles, paginate or use a paid plan.
-
-### 5. No Login Required — But Rate Limits Apply
-`unseenuser/IG-posts` doesn't need Instagram login, but Instagram rate limits still apply via the proxy.
-
-### 6. Toon Parsing is Fragile
-The toon/YAML parser works with OpenCoder's specific MCP output format. Prefer `--dataset` mode when possible.
-
-### 7. File Size Verification
-Script skips existing files above minimum thresholds (10KB for videos, 1KB for images). Delete folders to force re-downloads.
-
-### 8. Reel Watermark
-Apify returns `video_url_no_watermark` for reels when available. If the field is null, the reel may not have a watermark-free version.
-
----
-
-## Performance Notes
-
-- **GQL calls**: ~2-5s per carousel (sequential). 16 carousels → ~60s total
-- **Downloads**: ~0.5-3s per image depending on CDN speed
-- **Total for 16 carousels**: ~2-4 minutes (GQL + 137 images)
-- **Reels + photos**: download instantly from Apify URLs
-- **Use `--no-instagrapi`** for faster runs if you only need thumbnails
 
 ---
 
@@ -359,55 +334,35 @@ Apify returns `video_url_no_watermark` for reels when available. If the field is
 
 | Problem | Solution |
 |---------|----------|
-| `requests` not found | `pip install requests` |
-| `instagrapi` not found | `pip install instagrapi` (optional, for carousel multi-image) |
-| No items returned from Actor | Check username; profile may be private |
-| 403 on Apify media URL | CDN URL expired → re-run the Actor |
-| 403 on carousel image (fbcdn.net) | instagrapi handles this — ensure `instagrapi` is installed |
-| Toon file not found | Check the temp file path from MCP output |
-| "No items parsed" | Toon format may differ → try `--dataset` mode |
-| GQL timeout | Old post beyond GQL window → falls back to Apify thumbnail |
-| "No downloadable media" | Check `post_info.txt` for the item's available URLs |
+| "No sessionid found" | Run `--setup` or pass `--sessionid` directly |
+| "Login required" in sessionid mode | sessionid expired. Re-run `--setup` to get a fresh one |
+| `instagrapi` not found | `pip install instagrapi` |
+| Chrome cookie extraction fails | Use `--sessionid` flag with manual cookie from DevTools |
+| 403 on fbcdn.net | Use sessionid mode (instagrapi handles auth) |
+| Apify returns 403 | CDN URL expired → re-run the Actor |
+| GQL timeout | Old post > 4 weeks → falls back to Apify thumbnail |
+| No items in sessionid mode | Check username; profile may be private and sessionid may not follow it |
+| ModuleNotFoundError: No module named 'win32crypt' | Auto-detected; falls back to manual `--sessionid` flag |
+| "No items parsed" in toon mode | Toon format may differ → try `--dataset` API mode |
 
 ---
 
-## Output Verification
+## Known Issues
 
-```bash
-# Count files by type
-Get-ChildItem -Recurse -File ./output | Group-Object Extension
+### 1. Sessionid Expiration
+Instagram session cookies expire after some time (days-weeks). When this happens, re-run `--setup` or pass a fresh `--sessionid`.
 
-# Expected distribution:
-#   .mp4  → reels
-#   .jpg  → carousels, photos, thumbnails
-#   .txt  → post_info metadata
+### 2. Chrome DPAPI Decryption
+Cookie extraction uses Windows DPAPI + AES-GCM. Works with Chrome's latest cookie encryption (no-authentication-tag variant). If Chrome updates its format, extraction may break.
 
-# Check for empty files
-Get-ChildItem -Recurse -File ./output | Where-Object { $_.Length -eq 0 }
+### 3. Private Profiles
+Sessionid mode can only download profiles that the logged-in user follows. For private profiles you don't follow, Apify mode with `unseenuser/IG-posts` may work (the actor runs its own session).
 
-# Count posts per date
-Get-ChildItem -Directory ./output | ForEach-Object {
-    $count = (Get-ChildItem -Path $_.FullName -Directory).Count
-    "$($_.Name): $count posts"
-}
+### 4. Carousel GQL Limit (Apify mode)
+GQL enhancement works only for recent posts (< 4 weeks). Older posts get single thumbnail.
 
-# List carousels with their image counts
-Get-ChildItem -Recurse -File ./output/*.txt | ForEach-Object {
-    $dir = $_.Directory
-    $images = Get-ChildItem -Path $dir.FullName -Filter "*.jpg" `
-        | Where-Object { $_.Name -match '_\d{2}\.jpg$' }
-    if ($images.Count -gt 1) {
-        "$($dir.Parent.Name)/$($dir.Name): $($images.Count) images"
-    }
-}
-```
-
----
-
-## File Locations
-
-- **Skill**: `./SKILL.md` (this file)
-- **Download script**: `./instagram_downloader.py`
+### 5. CDN URL Expiry (Apify mode)
+Apify URLs expire after hours. Download soon after fetching.
 
 ---
 
@@ -415,9 +370,10 @@ Get-ChildItem -Recurse -File ./output/*.txt | ForEach-Object {
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.0.0 | 2026-07 | Sessionid mode with instagrapi full access; interactive setup wizard; Chrome cookie extraction; config management; 3-mode architecture |
+| 1.1.0 | 2026-07 | instagrapi GQL hybrid for carousel enhancement; `--no-instagrapi` flag |
 | 1.0.0 | 2026-07 | Initial Apify-based release |
-| 1.1.0 | 2026-07 | Added instagrapi GQL hybrid for full carousel extraction; `--no-instagrapi` flag; documented fbcdn.net CDN handling |
 
 ---
 
-**Instagram Downloader Skill v1.1.0** — Hybrid Apify + instagrapi approach.
+**Instagram Downloader Skill v2.0.0** — Three modes, zero compromises.
