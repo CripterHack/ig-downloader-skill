@@ -1,6 +1,8 @@
-# Instagram Downloader Skill v2.1
+# Instagram Downloader Skill v2.2
 
-> Download Instagram media — reels, carousels (all images), photos — via **login (instagrapi, recommended)**, **sessionid (instagrapi)** or **Apify dataset** fallback. Full login with 2FA support, challenge handling, and saved sessions.
+> Download Instagram media — reels, carousels (all images), photos — via **sessionid (instagrapi, recommended)**, **Playwright setup wizard**, or **Apify dataset** fallback. No password sharing required.
+
+> **⚠ 2026-07-07: `--login` mode is BROKEN.** Meta deprecated the instagrapi login endpoint server-side. Use `--setup` (Playwright) or a manual `--sessionid` cookie instead.
 
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](LICENSE)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
@@ -36,37 +38,31 @@ Traditional Instagram downloaders (`instaloader`, `gallery-dl`) fail with 403/No
 | Apify Actors | ❌ Carousels: only 1st image. Old posts: GQL fails. Cost: ~$0.03/run. |
 | `instagrapi` GQL (no login) | ✅ Free, but only recent posts (<4 weeks) |
 
-**v2.1 solution**: Three authentication paths:
-1. **Login** (recommended): Full username/password via `instagrapi` with 2FA and challenge support. Saved sessions auto-reload.
-2. **Sessionid**: Cookie-only access (no password, no 2FA). Full access to ALL posts, ALL carousel images, ANY date.
-3. **Apify** (fallback): Dataset-based when no login/sessionid is available.
+**v2.2 solution**: Two working authentication paths + one fallback:
+1. **Sessionid** (recommended) 🥇: Cookie-only access via `instagrapi` (no password, no 2FA). Full access to ALL posts, ALL carousel images, ANY date.
+2. **Apify** (fallback): Dataset-based when no sessionid is available.
+3. **`--setup`**: Playwright browser auto-extracts sessionid and saves to config.
 
-As a **fallback**, the Apify dataset mode is preserved for when instagrapi authentication is unavailable.
+> **`--login` mode removed**: Meta deprecated the underlying endpoint. Login via password no longer works.
 
 ---
 
 ## Quick Start
 
-### Option A: Login (recommended)
+### 1. Setup (one-time)
 
 ```bash
-pip install instagrapi
-python instagram_downloader.py --login -u username -o ./downloads
-```
-
-Password is prompted securely. Subsequent runs auto-reload the saved session.
-
-### Option B: Setup wizard (sessionid)
-
-```bash
-pip install instagrapi
+pip install instagrapi playwright
+playwright install chromium
 python instagram_downloader.py --setup
 ```
 
-A browser opens. Log into Instagram. Then:
+A browser opens. Log into Instagram. The sessionid is saved automatically.
+
+### 2. Download everything
 
 ```bash
-python instagram_downloader.py -u username -o ./downloads
+python instagram_downloader.py -u username -o ./my_downloads
 ```
 
 No `--sessionid` flag needed after setup.
@@ -77,58 +73,50 @@ No `--sessionid` flag needed after setup.
 
 | Mode | How | Best For |
 |------|-----|----------|
-| **Login** 🥇 | `instagrapi` full login (password + 2FA) | Full access. All posts, all carousels, private profiles. Saved sessions persist. |
-| **Sessionid** 🥈 | `instagrapi` login via browser cookie | Full access. All posts, all carousels, no date limit. No password sharing. |
+| **Sessionid** 🥇 | `instagrapi` login via browser cookie | Full access. All posts, all carousels, no date limit. No password sharing. |
 | **Apify (legacy)** | `unseenuser/IG-posts` dataset | No login at all. Carousels limited to 1 image for posts >4 weeks. |
-| **Setup** | Interactive browser → captures cookie → saves config | One-time. Enables sessionid mode. |
+| **Setup** | Playwright browser → captures cookie → saves config | One-time. Enables sessionid mode. |
 
 ### Mode Comparison
 
-| Feature | Login | Sessionid | Apify |
-|---------|-------|-----------|-------|
-| Login | Username/password (+2FA) | Cookie `sessionid` | None |
-| All posts (any date) | ✅ | ✅ | ✅ (catalog) |
-| Carousels: ALL images | ✅ (via `media_info()`) | ✅ (via `media_info()`) | ❌ 1st image only (old posts) |
-| Private profiles | ✅ (if you follow) | ✅ (if you follow) | ❌ |
-| Session persistence | ✅ Saved `settings.json` | ✅ `config.json` | N/A |
-| Download method | `instagrapi` native | `instagrapi` native | `requests` + `instagrapi` GQL |
-| Cost | $0 | $0 | ~$0.03/run |
-| Setup time | 10s (password prompt) | 1 min (cookie) | 5 min (Apify account) |
+| Feature | Sessionid | Apify |
+|---------|-----------|-------|
+| Authentication | Cookie `sessionid` | None |
+| All posts (any date) | ✅ | ✅ (catalog) |
+| Carousels: ALL images | ✅ (via `media_info()`) | ❌ 1st image only (old posts) |
+| Carousels: recent posts | ✅ | ✅ (GQL enhancement) |
+| Private profiles | ✅ (if you follow) | ❌ |
+| Session persistence | ✅ `config.json` | N/A |
+| Download method | `instagrapi` native | `requests` + `instagrapi` GQL |
+| Cost | $0 | ~$0.03/run |
+| Setup time | 1 min (first time via --setup) | 5 min (Apify account) |
 
 ---
 
 ## Authentication
 
-### A. Login (recommended)
+### A. Interactive Setup (recommended)
 
 ```bash
-python instagram_downloader.py --login -u username -o ./downloads
-```
-
-- Password prompted securely via `getpass` (invisible)
-- With 2FA: add `--totp CODE`
-- Challenge detection: SMS/email codes prompted interactively
-- Session saved to `~/.ig-downloader/settings.json` — subsequent runs auto-reload
-
-### B. Interactive Setup (sessionid)
-
-```bash
+pip install playwright && playwright install chromium
 python instagram_downloader.py --setup
 ```
 
-1. Opens `https://www.instagram.com` in your browser
-2. You log in normally (or are already logged in)
-3. Script detects the `sessionid` cookie automatically
+1. Launches a clean Chromium browser (no Chrome profile needed)
+2. You log into Instagram normally
+3. Script detects the `sessionid` cookie automatically via Playwright's `context.cookies()`
 4. Saves to `~/.ig-downloader/config.json`
 5. Done. No `--sessionid` flag needed ever again.
 
-### C. Manual sessionid (for power users)
+**Fallback chain**: Playwright → Chrome extraction → manual paste prompt.
+
+### B. Manual sessionid (for power users / no Playwright)
 
 1. Chrome → **F12** → **Application** → **Cookies** → `www.instagram.com`
 2. Copy the `sessionid` value
 3. Run: `python instagram_downloader.py -u username --sessionid "YOUR_COOKIE"`
 
-### D. Environment variable
+### C. Environment variable
 
 ```powershell
 $env:SESSIONID = "YOUR_COOKIE"
@@ -167,29 +155,19 @@ ig-downloader --help
 The script auto-detects which mode to use (priority order):
 
 ```
-1. Saved settings (~/.ig-downloader/settings.json) → Login mode (auto)
-2. --sessionid flag / env / config / Chrome → Sessionid mode
-3. --login flag   → Login mode (password prompted)
-4. --setup flag   → Interactive setup wizard
-5. --dataset/--toon-file → Apify mode (legacy)
+1. --sessionid flag / env var / config file / Chrome → Sessionid mode
+2. --setup flag   → Interactive setup wizard (Playwright)
+3. --dataset/--toon-file → Apify mode (legacy)
 ```
-
-### Login Flags
-
-| Flag | Description |
-|------|-------------|
-| `--login` | Full username/password login (recommended). Password prompted via `getpass`. |
-| `--password STR` | Inline password (omit for secure prompt). |
-| `--totp CODE` | 2FA verification code. |
-| `-u / --username HANDLE` | Target Instagram profile (required). |
-| `-o / --output DIR` | Output directory (default: `./instagram_downloads`). |
 
 ### Sessionid Flags
 
 | Flag | Description |
 |------|-------------|
+| `-u / --username HANDLE` | Target Instagram profile (required). |
 | `--sessionid STR` | sessionid cookie (direct, skips config/env). |
-| `--setup` | Interactive setup wizard (opens browser, captures cookie). |
+| `--setup` | Interactive setup wizard (Playwright → Chrome → manual paste). |
+| `-o / --output DIR` | Output directory (default: `./instagram_downloads`). |
 
 ### Apify Flags (Legacy)
 
@@ -208,19 +186,6 @@ The script auto-detects which mode to use (priority order):
 ---
 
 ## Examples
-
-### Login mode (recommended, full access)
-
-```bash
-# Password prompted securely (no --password flag needed)
-python instagram_downloader.py --login -u username -o ./downloads
-
-# With 2FA verification code
-python instagram_downloader.py --login -u username --totp 123456 -o ./downloads
-
-# After first login: saved session auto-reloads
-python instagram_downloader.py -u username -o ./downloads
-```
 
 ### Sessionid mode (from config file)
 
@@ -321,15 +286,14 @@ url: https://www.instagram.com/p/<SHORTCODE>/
 | Problem | Solution |
 |---------|----------|
 | `instagrapi` not found | `pip install instagrapi` |
-| Login fails | Check username/password. For 2FA, add `--totp CODE`. For challenge, check terminal for code prompt. |
-| Login succeeds but no downloads | Saved session may be expired — re-run with `--login` to refresh. |
+| `playwright` not found | `pip install playwright && playwright install chromium` |
 | "No sessionid found" | Run `--setup` or pass `--sessionid` flag. |
-| "Login required" in sessionid mode | sessionid expired. Re-run `--setup`. |
+| "Login required" | sessionid expired. Re-run `--setup`. |
+| Playwright browser doesn't open | Run `playwright install chromium` to download browser. |
 | Chrome cookie extraction fails | Use `--sessionid` flag with cookie from DevTools manually. |
 | 403 in Apify mode | CDN URL expired → re-run the Actor. |
 | GQL timeout | Post >4 weeks → falls back to Apify thumbnail. |
 | "No items" in sessionid mode | Check username; profile may be private and session may not follow it. |
-| ModuleNotFoundError: win32crypt | Auto-detected. Falls back to manual `--sessionid` flag. |
 | "No items parsed" in toon mode | Try `--dataset` API mode instead. |
 | `python` not found | Use `py` or `python3`. |
 
@@ -338,28 +302,25 @@ url: https://www.instagram.com/p/<SHORTCODE>/
 ## FAQ
 
 **Q: Does this share my Instagram password?**
-A: Login mode prompts for password via `getpass` (invisible, not stored). Sessionid mode uses a cookie — no password at all.
+A: No. The script uses a `sessionid` cookie — no password is ever sent or stored.
 
-**Q: How does login mode handle 2FA?**
-A: Pass `--totp CODE` for time-based codes. Challenge SMS/email codes are handled interactively via terminal prompt.
+**Q: How does --setup work?**
+A: It launches a clean Chromium browser via Playwright. You log into Instagram normally. The script extracts the `sessionid` cookie via Playwright's `context.cookies()` API. No passwords are transmitted to the script.
 
-**Q: Does login mode save my password?**
-A: No. The password is used once to log in, then `instagrapi` saves a session file (`settings.json`) — password is not stored.
-
-**Q: How long do sessions last?**
-A: Login sessions persist until Instagram invalidates them (weeks-months). Sessionid cookies expire in days-weeks.
+**Q: How long does the sessionid last?**
+A: Days to weeks. When it expires, re-run `--setup` (takes 30 seconds).
 
 **Q: Can I download private profiles?**
-A: Login/sessionid modes can download profiles your account follows. Apify mode only works for public profiles.
+A: Sessionid mode can download profiles your account follows. Apify mode only works for public profiles.
 
 **Q: Can I download stories / highlights?**
 A: No. This tool downloads profile posts and reels only.
 
 **Q: Do I still need Apify?**
-A: No. Login and sessionid modes replace Apify entirely. Apify mode is kept as a fallback.
+A: No. Sessionid mode replaces Apify entirely for most use cases. Apify mode is kept as a fallback.
 
 **Q: Does it work on Linux / macOS?**
-A: Yes. Login mode works everywhere (password prompt). `--setup` Chrome extraction is Windows-only (DPAPI). On Linux/macOS, use login or `--sessionid` flag.
+A: Yes. `--setup` uses Playwright (cross-platform). Linux/macOS: install `playwright` and you're set.
 
 ---
 
