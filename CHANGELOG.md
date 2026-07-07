@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-07-07
+
+### Added
+- **Playwright browser setup** — new `try_playwright_setup()` function as primary setup path
+- Launches clean Chromium (no Chrome profile dependency), waits for user login,
+  extracts `sessionid` directly via Playwright's `context.cookies()` API
+- **Triple fallback chain** in `--setup`: Playwright → Chrome extraction → manual paste
+- `playwright>=1.48.0` added to `requirements.txt`
+
+### Changed
+- Version bumped to 2.2.0
+- Interactive setup (`--setup`) now uses Playwright by default (resilient, cross-platform)
+- Legacy Chrome cookie extraction kept as second fallback
+- Manual sessionid paste added as third fallback
+
+### Fixed
+- Chrome cookie extraction was unreliable due to file locking, profile detection, DB format
+  changes (Chrome 127+ moved to `Network/Cookies`). Playwright bypasses all of these.
+
+## [2.1.0] - 2026-07-07
+
+### Added
+- **Login mode** (`--login`) — full username/password login via instagrapi
+- **2FA support** (`--totp CODE`) — two-factor authentication for login
+- **Challenge handling** — SMS/email verification codes auto-prompted during login
+- **Session persistence** — `~/.ig-downloader/settings.json` saved after login, auto-reused
+- **Private profile access** — download from any profile the authenticated user follows
+- `--password PASS` flag (omit to prompt securely via `getpass`)
+- `download_from_session()` pipeline — fetches ALL user media via `user_medias()`
+- `load_or_login_client()` — priority: saved settings > sessionid > full login
+- Smart mode detection: auto-routes to login/session/Apify based on available credentials
+
+### Changed
+- Version bumped to 2.1.0
+- `main()` now supports 4 operation modes (Login, Sessionid, Apify, Setup)
+- Authentication falls back gracefully: saved session → sessionid → login → Apify
+- `--sessionid` flag still works alongside new `--login` mode
+
 ## [2.0.0] - 2026-07-07
 
 ### Added
