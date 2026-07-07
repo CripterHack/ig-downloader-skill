@@ -1,7 +1,7 @@
 ---
 name: instagram-downloader
 description: Download Instagram profile media (reels MP4, photos JPG, full carousel multi-image JPG) via sessionid (instagrapi), Apify dataset fallback, or interactive setup wizard. No password sharing required.
-version: 2.1.0
+version: 2.2.0
 author: opencode
 type: skill
 category: data-extraction
@@ -16,51 +16,53 @@ tags:
   - scraping
 ---
 
-# Instagram Downloader Skill v2.1
+# Instagram Downloader Skill v2.2
 
-> **Purpose**: Download all media (reels MP4, carousels with ALL images, photos JPG) from an Instagram profile. Four operation modes: login (full username/password + 2FA), sessionid (cookie), Apify (no login, limited), setup wizard (interactive browser login).
+> **Purpose**: Download all media (reels MP4, carousels with ALL images, photos JPG) from an Instagram profile. Three operation modes: sessionid (cookie, recommended), Apify (no login, limited), setup wizard (Playwright browser).
+
+> **⚠ 2026-07-07: `--login` mode is BROKEN.** Meta deprecated the instagrapi login endpoint server-side. The `--login`, `--password`, and `--totp` flags exist but return 404. Use `--setup` (Playwright) or a manual `--sessionid` cookie instead.
 
 ---
 
 ## Operation Modes
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│                          INSTAGRAM DOWNLOADER v2.1                                   │
-│                                                                                      │
-│  ┌─────────────────────┐   ┌───────────────────┐   ┌──────────────────┐   ┌───────┐ │
-│  │  Mode 1: Login      │   │  Mode 2: Sessionid│   │  Mode 3: Apify   │   │Mode 4 │ │
-│  │  (Recommended)      │   │                   │   │  (Legacy)        │   │Setup  │ │
-│  │                     │   │                   │   │                  │   │(Wiz.) │ │
-│  │  instagrapi         │   │  instagrapi        │   │  Apify Actor     │   │Opens  │ │
-│  │  Client.login()     │   │  login_by_sid()    │   │  dataset         │   │browser│ │
-│  │  Password + 2FA     │   │  user_medias()     │   │  GQL enh.        │   │Polls  │ │
-│  │  Saved sessions     │   │  media_info()      │   │  for carousels   │   │Saves  │ │
-│  │                     │   │                    │   │                  │   │config │ │
-│  │  ✅ Full catalog    │   │  ✅ Full catalog   │   │  ✅ No login     │   │       │ │
-│  │  ✅ All carousels   │   │  ✅ All carousels  │   │  ❌ GQL cutoff   │   │       │ │
-│  │  ✅ Any date        │   │  ✅ Any date       │   │  ❌ 1st img old  │   │       │ │
-│  │  ✅ Private profiles│   │  ✅ No watermark   │   │                  │   │       │ │
-│  │  ──────────────     │   │  ────────────────   │   │  ─────────────   │   │       │ │
-│  │  Requires:          │   │  Requires:           │   │  Requires:       │   │One-   │ │
-│  │  --login + password │   │  sessionid cookie   │   │  Apify dataset   │   │time   │ │
-│  └─────────────────────┘   └─────────────────────┘   └──────────────────┘   └───────┘ │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                          INSTAGRAM DOWNLOADER v2.2                               │
+│                                                                                  │
+│  ┌──────────────────────┐   ┌──────────────────────┐   ┌────────────────────┐   │
+│  │  Mode 1: Sessionid   │   │  Mode 2: Apify       │   │  Mode 3: Setup     │   │
+│  │  (Recommended) 🥇    │   │  (Legacy)            │   │  (Wizard)          │   │
+│  │                      │   │                      │   │                    │   │
+│  │  instagrapi           │   │  Apify Actor         │   │  Playwright        │   │
+│  │  login_by_sessionid()│   │  dataset              │   │  Launches Chromium │   │
+│  │  user_medias()       │   │  GQL enhancement      │   │  Polls cookies()   │   │
+│  │  media_info()        │   │  for carousels        │   │  Saves config      │   │
+│  │                      │   │                       │   │                    │   │
+│  │  ✅ Full catalog     │   │  ✅ No login          │   │  Cross-platform    │   │
+│  │  ✅ All carousels    │   │  ❌ GQL cutoff        │   │  No Chrome dep     │   │
+│  │  ✅ Any date         │   │  ❌ 1st img old       │   │  Triple fallback   │   │
+│  │  ✅ No watermark     │   │                       │   │                    │   │
+│  │  ──────────────      │   │  ──────────────       │   │  ──────────────    │   │
+│  │  Requires:           │   │  Requires:            │   │  One-time setup    │   │
+│  │  sessionid cookie    │   │  Apify dataset ID     │   │  → config.json     │   │
+│  └──────────────────────┘   └──────────────────────┘   └────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Mode Comparison
 
-| Aspect | Login 🥇 | Sessionid 🥈 | Apify (legacy) | Setup Wizard |
-|--------|---------|-------------|----------------|--------------|
-| **Login** | Username/password (+2FA) | Cookie `sessionid` | None | Interactive browser |
-| **All posts** | ✅ Yes | ✅ Yes | ✅ Yes | N/A (setup only) |
-| **Old posts** | ✅ Yes | ✅ Yes | ❌ GQL < 4 weeks | N/A |
-| **Carousels** | ✅ All images | ✅ All images | ❌ 1st image only (old) | N/A |
-| **Private profiles** | ✅ (if you follow) | ✅ (if you follow) | ❌ | N/A |
-| **Session persistence** | ✅ Saved settings.json | ✅ config.json | N/A | ✅ config.json |
-| **Cost** | $0 | $0 | ~$0.03/run | $0 |
-| **Speed** | Fast (instagrapi) | Fast (instagrapi) | Fast (direct URLs) | N/A |
-| **Complexity** | Password (1 prompt) | Cookie extraction | Apify account | 1 click |
+| Aspect | Sessionid 🥇 | Apify (legacy) | Setup Wizard |
+|--------|-------------|----------------|--------------|
+| **Authentication** | Cookie `sessionid` | None | Playwright browser |
+| **All posts (any date)** | ✅ Yes | ✅ Yes | N/A (setup only) |
+| **Carousels: ALL images** | ✅ Yes | ❌ 1st image only (old posts) | N/A |
+| **Carousels: recent only** | ✅ Yes | ✅ GQL enhancement | N/A |
+| **Private profiles** | ✅ (if you follow) | ❌ | N/A |
+| **No watermark reels** | ✅ Yes | ✅ Yes (Apify) | N/A |
+| **Session persistence** | ✅ config.json | N/A | ✅ config.json |
+| **Setup time** | 1 min (first time) | 5 min (Apify account) | 30s (one-time) |
+| **Cost** | $0 | ~$0.03/run | $0 |
 
 ---
 
@@ -68,73 +70,67 @@ tags:
 
 ### Credential Resolution Priority
 
-The script auto-detects the best available authentication method:
+The script auto-detects credentials in this order:
 
-1. **Saved settings** (`~/.ig-downloader/settings.json`) — persistent session from `--login`, auto-reloaded
-2. **`--sessionid` CLI flag** — one-shot session cookie
-3. **`SESSIONID` environment variable** — for CI/automation
-4. **Config file** (`~/.ig-downloader/config.json`) — persistent, set by `--setup`
-5. **Chrome cookies** — automatic extraction from browser SQLite
-6. **`--login` fallback** — prompts for password if no other credential found
+1. **`--sessionid` CLI flag** — one-shot session cookie (highest priority)
+2. **`SESSIONID` environment variable** — for CI/automation  
+3. **Config file** (`~/.ig-downloader/config.json`) — persistent, set by `--setup`
+4. **Chrome cookies** — automatic extraction from browser SQLite (if logged in)
 
-When no instagrapi auth is available, falls through to **Apify mode**.
+When no sessionid is found → falls to **`--setup`** (interactive) or **Apify mode**
+(if dataset provided).
 
-### Mode 1: Login (Recommended)
+> ⚠ The `--login` mode (and its `settings.json` persistence) is **BROKEN**.
+> Meta deprecated the login endpoint. All auth must use sessionid or --setup.
 
-```
-python instagram_downloader.py --login -u username
-                              ▼
-               ┌─ Password (secure prompt) ──┐
-               │  getpass.getpass()           │
-               └──────────────────────────────┘
-               │
-               ▼
-    instagrapi.Client.login(password, verification_code)
-         ┌─────┴─────┐
-         ▼            ▼
-    2FA prompt   Challenge SMS/email
-   (--totp)     (code_handler)
-         │            │
-         └─────┬──────┘
-               ▼
-      cl.dump_settings(session_path)
-      Save to ~/.ig-downloader/settings.json
-               │
-               ▼
-      cl.user_id_from_username(username)
-               │
-               ▼
-      cl.user_medias(user_id, amount=0)
-          (fetches ALL posts)
-               │
-      ┌────────┴──────────┐
-      ▼                    ▼
- cl.photo_download()   cl.video_download()
- (photos/carousels)    (reels)
-      │                    │
-      ▼                    ▼
- <output_dir>/YYYY-MM-DD/<shortcode>/
-     ├── <shortcode>.mp4          (reel)
-     ├── <shortcode>.jpg          (photo)
-     ├── <shortcode>_01.jpg       (carousel img 1/N)
-     ├── <shortcode>_02.jpg       (carousel img 2/N)
-     ├── ...
-     └── post_info.txt            (metadata)
-```
-
-### Mode 2: Sessionid
+### Mode 1: Sessionid (Recommended)
 
 ```
 User provides ──→ sessionid cookie
                         │
                         ▼
               instagrapi.login_by_sessionid()
-         (same pipeline as Mode 1 from user_id onward)
+                        │
+                        ▼
+              cl.user_id_from_username(username)
+                        │
+                        ▼
+              cl.user_medias(user_id, amount=0)
+                  (fetches ALL posts)
+                        │
+              ┌─────────┴──────────┐
+              ▼                    ▼
+         cl.photo_download()   cl.video_download()
+         (photos/carousels)    (reels)
+              │                    │
+              ▼                    ▼
+         <output_dir>/YYYY-MM-DD/<shortcode>/
+             ├── <shortcode>.mp4          (reel)
+             ├── <shortcode>.jpg          (photo)
+             ├── <shortcode>_01.jpg       (carousel img 1/N)
+             ├── <shortcode>_02.jpg       (carousel img 2/N)
+             ├── ...
+             └── post_info.txt            (metadata)
 ```
 
-### Mode 3: Apify (Fallback)
+### Mode 2: Apify (Fallback)
 
 Same as v1.x: Apify Actor → dataset → toon file → download (with GQL carousel enhancement for recent posts).
+
+### Interactive Setup
+
+```
+No config → run --setup
+    │
+    ├── Playwright (primary): launches Chromium, polls cookies()
+    │     → saves sessionid to ~/.ig-downloader/config.json
+    │
+    ├── Chrome DB (fallback): DPAPI + AES-GCM extraction
+    │     → may fail due to file locks or Chrome updates
+    │
+    └── Manual paste (last resort): prompts user for raw sessionid
+          → saves to config.json
+```
 
 ---
 
@@ -177,27 +173,17 @@ python instagram_downloader.py -u username
 
 ## Workflow
 
-### Login Mode (Recommended, Full Access)
+### Sessionid Mode (Recommended, Full Access)
 
 ```bash
-# Download all media (password prompted securely)
-python instagram_downloader.py --login -u username -o ./downloads
-
-# With 2FA
-python instagram_downloader.py --login -u username --totp 123456 -o ./downloads
-
-# Subsequent runs: saved session auto-reloads, just:
-python instagram_downloader.py -u username -o ./downloads
-```
-
-### Sessionid Mode (Cookie)
-
-```bash
-# One-time setup
+# One-time setup (Playwright browser → logs in → saves cookie)
 python instagram_downloader.py --setup
 
-# Then just download
-python instagram_downloader.py -u username -o ./instagram_downloads
+# Then just download — sessionid auto-loaded from config
+python instagram_downloader.py -u username -o ./downloads
+
+# Or pass cookie directly (one-shot, no config needed)
+python instagram_downloader.py -u username --sessionid "1234..." -o ./downloads
 ```
 
 ### Apify Mode (No Login)
@@ -226,10 +212,11 @@ python instagram_downloader.py --toon-file ./data.txt \
 
 | Option | Description |
 |--------|-------------|
-| `--login` | Full username/password login (recommended). Prompts for password securely. |
-| `--password STR` | Password for `--login` mode (omit to prompt securely via `getpass`). |
-| `--totp CODE` | 2FA verification code for `--login` mode. |
-| `--sessionid STR` | Instagram sessionid cookie (one-shot, overrides config/env). |
+| `--sessionid STR` | Instagram sessionid cookie (one-shot, overrides config/env). **Recommended auth method.** |
+| `--setup` | Interactive setup: Playwright → Chrome → manual paste. Saves to config. |
+| ~~`--login`~~ | ⚠ **BROKEN** — Meta deprecated the endpoint. Do NOT use. |
+| ~~`--password STR`~~ | ⚠ **BROKEN** — part of `--login` mode. |
+| ~~`--totp CODE`~~ | ⚠ **BROKEN** — part of `--login` mode. |
 | `--setup` | Interactive setup: opens browser, polls for login, saves sessionid to config. |
 | `--dataset ID` | Apify dataset ID (legacy, no login). |
 | `--api-token KEY` | Apify API token (required with `--dataset`). |
@@ -316,19 +303,6 @@ Location: `~/.ig-downloader/config.json`
 ---
 
 ## Examples
-
-### Login mode (recommended, full access)
-
-```bash
-# Password prompted securely (no --password flag needed)
-python instagram_downloader.py --login -u username -o ./downloads
-
-# With 2FA verification code
-python instagram_downloader.py --login -u username --totp 123456 -o ./downloads
-
-# After first login: saved session auto-reloads
-python instagram_downloader.py -u username -o ./downloads
-```
 
 ### Sessionid mode (from config, simplest)
 
@@ -434,4 +408,4 @@ Apify URLs expire after hours. Download soon after fetching. Login/sessionid mod
 
 ---
 
-**Instagram Downloader Skill v2.1.0** — Four modes, zero compromises, full login.
+**Instagram Downloader Skill v2.2.0** — Sessionid + Apify + Playwright setup. Zero compromises.
