@@ -60,7 +60,7 @@ import os, sys, re, json, argparse, getpass
 from datetime import datetime, timezone, date
 from urllib.parse import urlparse
 from pathlib import Path
-import webbrowser, time, sqlite3, shutil
+import time, sqlite3, shutil
 import subprocess
 
 try:
@@ -82,7 +82,7 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 # ── Constants ─────────────────────────────────────────────────
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 CONFIG_DIR = Path.home() / ".ig-downloader"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
@@ -238,37 +238,92 @@ def resolve_sessionid(args):
 
 
 # ═══════════════════════════════════════════════════════════════
-#  INTERACTIVE SETUP
+#  INTERACTIVE SETUP (Playwright + legacy Chrome + manual fallback)
 # ═══════════════════════════════════════════════════════════════
 
+def try_playwright_setup(args, timeout=300):
+    """Capture sessionid via Playwright (no Chrome profile dependency).
+    Launches a clean Chromium, waits for user login, extracts sessionid cookie."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("  Playwright not installed. Install with:")
+        print("      pip install playwright && playwright install chromium")
+        print("  Falling back to Chrome extraction...")
+        return None
+
+    print("  Launching browser (Chromium)...")
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                headless=False,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            context = browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                user_agent=DEFAULT_USER_AGENT,
+            )
+            page = context.new_page()
+            page.goto("https://www.instagram.com/accounts/login/",
+                      wait_until="domcontentloaded")
+
+            start = time.time()
+            poll_interval = 2
+            while time.time() - start < timeout:
+                cookies = context.cookies()
+                for c in cookies:
+                    if c["name"] == "sessionid" and c.get("value"):
+                        elapsed = int(time.time() - start)
+                        browser.close()
+                        print(f"  [OK] sessionid detected! ({len(c['value'])} chars, {elapsed}s)")
+                        return c["value"]
+                time.sleep(poll_interval)
+                elapsed = int(time.time() - start)
+                if elapsed % 10 == 0 and elapsed > 0:
+                    remaining = timeout - elapsed
+                    print(f"  Waiting... ({remaining}s remaining)")
+
+            browser.close()
+            print(f"  Timeout: no login detected in {timeout//60} minutes.")
+            return None
+    except Exception as e:
+        print(f"  Playwright error: {e}")
+        return None
+
+
+def try_manual_paste():
+    """Ask user to paste sessionid cookie manually."""
+    print("\n  Alternative: Paste your sessionid cookie manually.")
+    print("  (Get it from Chrome DevTools → Application → Cookies → www.instagram.com)")
+    val = input("  sessionid: ").strip()
+    return val if val else None
+
+
 def interactive_setup(args):
-    """Open browser, wait for login, extract sessionid, save config."""
+    """Interactive login setup. Tries Playwright first, then Chrome extraction,
+    then manual paste. Saves sessionid to config on success."""
     print()
     print("=" * 55)
     print("  Instagram Login Setup")
     print("=" * 55)
-    print("1. Chrome will open to Instagram's login page.")
-    print("2. Log in (script auto-detects the sessionid).")
-    print("3. Cookie saved locally for future use.\n")
-    webbrowser.open('https://www.instagram.com/accounts/login/')
-    timeout = 240
-    start = time.time()
-    while time.time() - start < timeout:
+
+    sid = try_playwright_setup(args)
+
+    if not sid:
+        print("\n  Trying Chrome cookie extraction (legacy)...")
         sid = get_chrome_cookie()
-        if sid:
-            elapsed = int(time.time() - start)
-            print(f"  [OK] sessionid detected! ({len(sid)} chars, {elapsed}s)")
-            save_config({'sessionid': sid})
-            if args.username:
-                return sid
-            print("  Setup complete. Run with --username to download.")
-            return None
-        time.sleep(2)
-        elapsed = int(time.time() - start)
-        if elapsed % 10 == 0 and elapsed > 0:
-            remaining = timeout - elapsed
-            print(f"  Waiting... ({remaining}s remaining)")
-    print(f"  Timeout: no login detected in {timeout//60} minutes.")
+
+    if not sid:
+        sid = try_manual_paste()
+
+    if sid:
+        save_config({'sessionid': sid})
+        if args.username:
+            return sid
+        print("  Setup complete. Re-run with --username to download.")
+        return None
+
+    print("  ERROR: Could not obtain sessionid.")
     return None
 
 
