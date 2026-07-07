@@ -47,6 +47,43 @@ Traditional Instagram downloaders (`instaloader`, `gallery-dl`) fail with 403/No
 
 ---
 
+## How It Works
+
+```mermaid
+flowchart LR
+    subgraph Auth[Authentication Layer]
+        direction TB
+        C1[config.json] -->|auto-loads| SID[sessionid]
+        CLI[--sessionid flag] --> SID
+        ENV[SESSIONID env var] --> SID
+        SETUP[--setup wizard] -->|Playwright| SID
+        CHROME[Chrome cookies] -->|fallback| SID
+    end
+
+    subgraph Download[Download Engine]
+        direction TB
+        SID --> instagrapi{instagrapi}
+        instagrapi -->|Sessionid| FULL[user_medias → ALL posts]
+        FULL --> CARR{media_type}
+        CARR -->|Photo| PHOTO[photo_download → .jpg]
+        CARR -->|Reel| REEL[video_download → .mp4]
+        CARR -->|Carousel| CAR[media_info → _01.jpg ... _0N.jpg]
+    end
+
+    subgraph Fallback[Apify Fallback]
+        direction TB
+        DATASET[Apify Dataset] --> TOON[toon-file / API]
+        TOON --> GQL{GQL ≤4w?}
+        GQL -->|Yes| GOK[All images]
+        GQL -->|No| GFALL[Single thumbnail]
+    end
+
+    Download --> OUT[📁 YYYY-MM-DD/shortcode/]
+    Fallback --> OUT
+```
+
+---
+
 ## Quick Start
 
 ### 1. Setup (one-time)
@@ -100,6 +137,27 @@ No `--sessionid` flag needed after setup.
 ```bash
 pip install playwright && playwright install chromium
 python instagram_downloader.py --setup
+```
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Script as instagram_downloader.py
+    participant PW as Playwright Chromium
+    participant IG as instagram.com
+    participant FS as ~/.ig-downloader/config.json
+
+    Script->>PW: Launch headful browser
+    PW->>IG: Navigate to instagram.com
+    User->>IG: Log in (manual)
+    Note over IG: User enters credentials,<br/>2FA, or challenge codes
+    loop Every 3 seconds
+        Script->>PW: Poll context.cookies()
+        PW-->>Script: [cookies...]
+    end
+    Script->>FS: Save sessionid to config.json
+    Script->>PW: Close browser
+    Note over User,FS: ✅ Done — subsequent runs<br/>auto-load sessionid from config
 ```
 
 1. Launches a clean Chromium browser (no Chrome profile needed)
