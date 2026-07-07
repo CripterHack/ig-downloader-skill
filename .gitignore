@@ -39,3 +39,8 @@ credentials.json
 
 # Logs
 *.log
+
+# backup files
+*.orig
+*.v2
+.instagram_downloader_*
