@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Downloads/Output (users should keep their own)
+*.mp4
+*.jpg
+*.jpeg
+*.png
+instagram_downloads/
+instagram_*/
+
+# Apify & credentials
+apify_token.txt
+*.token
+credentials.json
+
+# Logs
+*.log
