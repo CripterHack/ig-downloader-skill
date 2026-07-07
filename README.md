@@ -10,6 +10,27 @@
 
 ---
 
+## 🚀 One-Click Install
+
+Choose your platform and run:
+
+| Platform | Command |
+|----------|---------|
+| **Linux / macOS / Git Bash** | `curl -fsSL https://raw.githubusercontent.com/cripterhack/ig-downloader-skill/main/install.sh \| bash` |
+| **Windows PowerShell** | `iex (iwr -Uri https://raw.githubusercontent.com/cripterhack/ig-downloader-skill/main/install.ps1).Content` |
+| **From cloned repo** | `git clone https://github.com/cripterhack/ig-downloader-skill.git && cd ig-downloader-skill && ./install.sh` |
+| **npx (Skills.sh)** | `npx skills add cripterhack/ig-downloader-skill` |
+
+Each installer will:
+1. ✅ Install the Python package (`ig-downloader` CLI via `pip`)
+2. ✅ Detect your AI agent (OpenCode, Claude Code, Codex CLI, Cursor)
+3. ✅ Copy the skill files (`SKILL.md` + `AGENTS.md`) to your agent's skills directory
+4. ✅ Verify everything works
+
+> **Zero configuration.** No need to manually copy SKILL.md files or install dependencies one-by-one.
+
+---
+
 ## Table of Contents
 
 - [Why This Tool Exists](#why-this-tool-exists)
@@ -86,23 +107,38 @@ flowchart LR
 
 ## Quick Start
 
-### 1. Setup (one-time)
+### 0. Install the skill (one-time)
 
 ```bash
-pip install instagrapi playwright
-playwright install chromium
-python instagram_downloader.py --setup
+# Option A — Universal installer (recommended)
+curl -fsSL https://raw.githubusercontent.com/cripterhack/ig-downloader-skill/main/install.sh | bash
+
+# Option B — From source
+git clone https://github.com/cripterhack/ig-downloader-skill.git
+cd ig-downloader-skill
+./install.sh
 ```
 
-A browser opens. Log into Instagram. The sessionid is saved automatically.
+The installer auto-detects your AI agent (OpenCode, Claude Code, etc.), copies
+the skill files, and installs the `ig-downloader` CLI globally.
 
-### 2. Download everything
+### 1. Set up Instagram access
 
 ```bash
-python instagram_downloader.py -u username -o ./my_downloads
+ig-downloader --setup
 ```
 
-No `--sessionid` flag needed after setup.
+A browser opens. Log into Instagram. The `sessionid` cookie is saved automatically.
+
+> **No password sharing.** The `--setup` wizard uses Playwright to capture a cookie only.
+
+### 2. Download a profile
+
+```bash
+ig-downloader -u username -o ./my_downloads
+```
+
+No `--sessionid` flag needed after setup — the CLI reads your saved config.
 
 ---
 
@@ -185,23 +221,105 @@ python instagram_downloader.py -u username -o ./downloads
 
 ## Installation
 
+### Universal installer (recommended)
+
 ```bash
-# Clone
-git clone https://github.com/cripterhack/ig-downloader-skill.git
-cd ig-downloader-skill
+# Linux / macOS / Git Bash
+curl -fsSL https://raw.githubusercontent.com/cripterhack/ig-downloader-skill/main/install.sh | bash
 
-# Dependencies
-pip install instagrapi
-
-# Run
-python instagram_downloader.py --help
+# Windows PowerShell
+iex (iwr -Uri https://raw.githubusercontent.com/cripterhack/ig-downloader-skill/main/install.ps1).Content
 ```
 
-Or install as a package:
+This installs both the Python CLI **and** the AI agent skill files (SKILL.md).
+After this, your AI agent can discover and use the skill automatically.
+
+### Manual install (pip only)
 
 ```bash
 pip install git+https://github.com/cripterhack/ig-downloader-skill.git
 ig-downloader --help
+```
+
+### From source
+
+```bash
+git clone https://github.com/cripterhack/ig-downloader-skill.git
+cd ig-downloader-skill
+pip install -e .
+python instagram_downloader.py --help
+```
+
+### Agent-specific install
+
+```bash
+# Install only for Codex CLI (not auto-detect)
+./install.sh --agent codex
+
+# Install only in current project directory
+./install.sh --project
+
+# Install for ALL supported agents
+./install.sh --agent all
+```
+
+---
+
+## 🤖 AI Agent Integration
+
+This project is a **dual-layer tool**: a Python CLI **and** an AI agent skill.
+
+### How agents discover the skill
+
+When you run the installer, it copies `SKILL.md` and `AGENTS.md` to your
+agent's skill directory:
+
+| Agent | Skill Directory |
+|-------|----------------|
+| **OpenCode** | `~/.config/opencode/skills/instagram-downloader/` |
+| **Claude Code** | `~/.claude/skills/instagram-downloader/` |
+| **Codex CLI** | `~/.codex/skills/instagram-downloader/` |
+| **Cursor** | `~/.cursor/skills/instagram-downloader/` |
+| **Generic** | `~/.agents/skills/instagram-downloader/` |
+
+In new sessions, the agent reads `SKILL.md` and learns how to invoke
+`ig-downloader` optimally — including mode selection logic, flag reference,
+error handling, and known issues.
+
+### What the agent knows
+
+Once the skill is loaded, your AI agent can:
+
+- **Auto-detect the best auth method** (config → sessionid flag → setup → Apify)
+- **Download all media** from any Instagram profile
+- **Handle errors gracefully** (expired session, missing dependencies, 403s)
+- **Advise on setup** if no sessionid is available
+
+### Example prompts
+
+Once the skill is installed, just ask your agent:
+
+> *"Download all Instagram posts from @username to ./downloads"*
+>
+> *"I need to set up Instagram download — can you help?"*
+>
+> *"Download only the reels from username using the apify dataset in data.txt"*
+>
+> *"My session expired, help me set up Instagram again"*
+
+The agent will read `SKILL.md`, understand the available modes, and invoke
+`ig-downloader` with the correct flags.
+
+### Verification
+
+To confirm the skill is installed:
+
+```bash
+# Check if skill files exist
+ls ~/.config/opencode/skills/instagram-downloader/SKILL.md
+
+# Check if the CLI works
+ig-downloader --version
 ```
 
 ---
