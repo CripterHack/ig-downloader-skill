@@ -187,7 +187,7 @@ python instagram_downloader.py -u username -o ./downloads
 
 ```bash
 # Clone
-git clone https://github.com/USERNAME/ig-downloader-skill.git
+git clone https://github.com/cripterhack/ig-downloader-skill.git
 cd ig-downloader-skill
 
 # Dependencies
@@ -200,7 +200,7 @@ python instagram_downloader.py --help
 Or install as a package:
 
 ```bash
-pip install git+https://github.com/USERNAME/ig-downloader-skill.git
+pip install git+https://github.com/cripterhack/ig-downloader-skill.git
 ig-downloader --help
 ```
 

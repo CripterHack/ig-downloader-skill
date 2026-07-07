@@ -974,7 +974,7 @@ def main():
         # ── Mode 1/2: Session or Login ──
         if not args.username:
             print("ERROR: --username is required for login/session mode.")
-            print("  python instagram_downloader.py --login -u USERNAME")
+            print("  python instagram_downloader.py --login -u cripterhack")
             sys.exit(1)
 
         client, method = load_or_login_client(args)

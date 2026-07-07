@@ -19,8 +19,8 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/USERNAME/ig-downloader-skill"
-Issues = "https://github.com/USERNAME/ig-downloader-skill/issues"
+Repository = "https://github.com/cripterhack/ig-downloader-skill"
+Issues = "https://github.com/cripterhack/ig-downloader-skill/issues"
 
 [project.scripts]
 ig-downloader = "instagram_downloader:main"

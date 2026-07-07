@@ -80,7 +80,7 @@ Simply open a Pull Request with your changes.
 
 ```powershell
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/ig-downloader-skill.git
+git clone https://github.com/cripterhack/ig-downloader-skill.git
 cd ig-downloader-skill
 
 # (Recommended) Create a virtual environment
@@ -166,8 +166,8 @@ Once approved, a maintainer will merge your PR. You'll be credited in the releas
 
 ## Getting Help
 
-- **Issues**: Use [GitHub Issues](https://github.com/USERNAME/ig-downloader-skill/issues) for bug reports and feature requests
-- **Discussions**: Use [GitHub Discussions](https://github.com/USERNAME/ig-downloader-skill/discussions) for questions and general discussion
+- **Issues**: Use [GitHub Issues](https://github.com/cripterhack/ig-downloader-skill/issues) for bug reports and feature requests
+- **Discussions**: Use [GitHub Discussions](https://github.com/cripterhack/ig-downloader-skill/discussions) for questions and general discussion
 
 ---
 
