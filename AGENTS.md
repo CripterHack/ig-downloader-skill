@@ -1,6 +1,6 @@
 ---
 name: ig-downloader
-version: 2.2.0
+version: 2.4.0
 author: Edgar Zorrilla
 description: >
   Download Instagram profile media (reels MP4, carousels JPG, photos JPG) via
@@ -30,7 +30,7 @@ tags:
 |-------|-------|
 | **Tool name** | `ig-downloader` |
 | **Script path** | `instagram_downloader.py` (same directory as this file) |
-| **Version** | 2.2.0 |
+| **Version** | 2.4.0 |
 | **Language** | Python 3.7+ |
 | **Dependencies** | `instagrapi`, `requests`, `playwright` |
 
@@ -303,4 +303,4 @@ python instagram_downloader.py --dataset <ID> --api-token xxx -u username -o ./d
 
 ---
 
-*ig-downloader AGENTS.md v2.2.0 — Last updated: 2026-07-07*
+*ig-downloader AGENTS.md v2.4.0 — Last updated: 2026-07-07*

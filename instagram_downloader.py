@@ -83,7 +83,7 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 # ── Constants ─────────────────────────────────────────────────
-VERSION = "2.2.0"
+VERSION = "2.4.0"
 CONFIG_DIR = Path.home() / ".ig-downloader"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"

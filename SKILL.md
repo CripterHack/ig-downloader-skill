@@ -1,7 +1,7 @@
 ---
 name: instagram-downloader
 description: Download Instagram profile media (reels MP4, photos JPG, full carousel multi-image JPG) via sessionid (instagrapi), Apify dataset fallback, or interactive setup wizard. No password sharing required.
-version: 2.2.0
+version: 2.4.0
 author: Edgar Zorrilla
 license: GPL-2.0
 type: skill
@@ -407,6 +407,13 @@ Apify URLs expire after hours. Download soon after fetching. Login/sessionid mod
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.4.0 | 2026-07 | GitHub topics for SkillsMP auto-discovery; ClawHub CLI install and auth; marketplace registration setup |
+| 2.3.1 | 2026-07 | Installer documentation and AI agent integration guide; README updated with One-Click Install, Quick Start, Installation, AI Agent Integration sections |
+| 2.3.0 | 2026-07 | Universal installers (install.sh + install.ps1) for AI agent skill distribution; auto-detect agent, pip install, skill file copy |
+| 2.2.3 | 2026-07 | Replace USERNAME placeholders with cripterhack across project |
+| 2.2.2 | 2026-07 | auto-release workflow; Mermaid diagrams in docs; enforce global-only opencode |
+| 2.2.1 | 2026-07 | Fix deprecated setuptools backend; CI now uses `setuptools.build_meta` |
+| 2.2.0 | 2026-07 | Playwright browser setup; triple fallback chain (Playwright → Chrome → manual paste) |
 | 2.1.0 | 2026-07 | Login mode: `--login` with password prompt, 2FA (`--totp`), challenge handler, saved session persistence via `dump_settings()` |
 | 2.0.0 | 2026-07 | Sessionid mode with instagrapi full access; interactive setup wizard; Chrome cookie extraction; config management; 3-mode architecture |
 | 1.1.0 | 2026-07 | instagrapi GQL hybrid for carousel enhancement; `--no-instagrapi` flag |
@@ -414,4 +421,4 @@ Apify URLs expire after hours. Download soon after fetching. Login/sessionid mod
 
 ---
 
-**Instagram Downloader Skill v2.2.0** — Sessionid + Apify + Playwright setup. Zero compromises.
+**Instagram Downloader Skill v2.4.0** — Sessionid + Apify + Playwright setup. Zero compromises.
