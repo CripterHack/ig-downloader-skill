@@ -51,9 +51,6 @@ Usage:
 import os, sys, re, json, argparse
 from datetime import datetime, timezone, date
 from urllib.parse import urlparse
-from pathlib import Path
-import webbrowser, time, sqlite3, shutil
-import subprocess
 
 try:
     import requests
@@ -74,9 +71,6 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 # ── Constants ─────────────────────────────────────────────────
-VERSION = "2.0.0"
-CONFIG_DIR = Path.home() / ".ig-downloader"
-CONFIG_FILE = CONFIG_DIR / "config.json"
 APIFY_API_BASE = "https://api.apify.com/v2"
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -95,176 +89,7 @@ INSTA_HEADERS = {
 
 
 # ═══════════════════════════════════════════════════════════════
-#  CHROME COOKIE HELPER
-# ═══════════════════════════════════════════════════════════════
-
-def _get_chrome_key():
-    """Retrieve Chrome's AES-GCM decryption key via DPAPI."""
-    try:
-        import win32crypt  # pywin32
-    except ImportError:
-        try:
-            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-            import win32crypt
-        except ImportError:
-            # Fallback: try system DPAPI
-            pass
-    try:
-        from win32crypt import CryptUnprotectData
-    except ImportError:
-        return None
-
-    local_state = Path(os.environ['LOCALAPPDATA']) / (
-        "Google/Chrome/User Data/Local State"
-    )
-    if not local_state.exists():
-        return None
-    try:
-        data = json.loads(local_state.read_text(encoding='utf-8'))
-        encrypted_key = data.get('os_crypt', {}).get('encrypted_key')
-        if not encrypted_key:
-            return None
-        encrypted_key = bytes(encrypted_key, 'utf-8') if isinstance(encrypted_key, str) else encrypted_key
-        encrypted_key = encrypted_key.removeprefix(b'DPAPI')
-        key, _ = CryptUnprotectData(encrypted_key, None, None, None, 0)
-        return key
-    except Exception:
-        return None
-
-
-def _decrypt_cookie(encrypted_val, key):
-    """Decrypt AES-GCM encrypted cookie value."""
-    if not encrypted_val or not key:
-        return None
-    try:
-        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-        nonce = encrypted_val[3:15]
-        ciphertext = encrypted_val[15:]
-        aesgcm = AESGCM(key)
-        return aesgcm.decrypt(nonce, ciphertext, None).decode('utf-8')
-    except ImportError:
-        return None
-    except Exception:
-        return None
-
-
-def get_chrome_cookie(domain_like='instagram', name='sessionid'):
-    """Extract a cookie from Chrome's SQLite database."""
-    key = _get_chrome_key()
-    if not key:
-        return None
-
-    profiles = [
-        Path(os.environ['LOCALAPPDATA']) / "Google/Chrome/User Data/Default",
-        Path(os.environ['LOCALAPPDATA']) / "Google/Chrome/User Data/Profile 1",
-    ]
-    for profile in profiles:
-        db_path = profile / "Network/Cookies"
-        if not db_path.exists():
-            continue
-        tmp = db_path.parent / f"Cookies_copy_{int(time.time())}.tmp"
-        try:
-            shutil.copy2(str(db_path), str(tmp))
-            conn = sqlite3.connect(str(tmp))
-            c = conn.cursor()
-            c.execute(
-                "SELECT encrypted_value FROM cookies "
-                "WHERE host_key LIKE ? AND name=?",
-                (f'%{domain_like}%', name)
-            )
-            row = c.fetchone()
-            conn.close()
-            os.unlink(str(tmp))
-            if row:
-                val = _decrypt_cookie(row[0], key)
-                if val:
-                    return val
-        except Exception:
-            try:
-                os.unlink(str(tmp))
-            except Exception:
-                pass
-    return None
-
-
-# ═══════════════════════════════════════════════════════════════
-#  CONFIG MANAGEMENT
-# ═══════════════════════════════════════════════════════════════
-
-def load_config():
-    """Load saved sessionid from config file."""
-    if CONFIG_FILE.exists():
-        try:
-            return json.loads(CONFIG_FILE.read_text(encoding='utf-8'))
-        except Exception:
-            pass
-    return {}
-
-
-def save_config(data):
-    """Save sessionid to config file."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(json.dumps(data, indent=2), encoding='utf-8')
-    print(f"  [OK] Config saved to: {CONFIG_FILE}")
-
-
-def resolve_sessionid(args):
-    """Resolve sessionid from all sources:
-    Priority: --sessionid flag > SESSIONID env var > config file > Chrome cookies
-    """
-    if args.sessionid:
-        return args.sessionid, "CLI flag"
-    env = os.environ.get('SESSIONID')
-    if env:
-        return env, "env var SESSIONID"
-    cfg = load_config()
-    if cfg.get('sessionid'):
-        return cfg['sessionid'], f"config file"
-    if args.setup:
-        return None, "setup mode"
-    sid = get_chrome_cookie()
-    if sid:
-        return sid, "Chrome cookies"
-    return None, None
-
-
-# ═══════════════════════════════════════════════════════════════
-#  INTERACTIVE SETUP
-# ═══════════════════════════════════════════════════════════════
-
-def interactive_setup(args):
-    """Open browser, wait for login, extract sessionid, save config."""
-    print()
-    print("=" * 55)
-    print("  Instagram Login Setup")
-    print("=" * 55)
-    print("1. Chrome will open to Instagram's login page.")
-    print("2. Log in (script auto-detects the sessionid).")
-    print("3. Cookie saved locally for future use.\n")
-    webbrowser.open('https://www.instagram.com/accounts/login/')
-    timeout = 240
-    start = time.time()
-    while time.time() - start < timeout:
-        sid = get_chrome_cookie()
-        if sid:
-            elapsed = int(time.time() - start)
-            print(f"  [OK] sessionid detected! ({len(sid)} chars, {elapsed}s)")
-            save_config({'sessionid': sid})
-            if args.username:
-                return sid
-            print("  Setup complete. Run with --username to download.")
-            return None
-        time.sleep(2)
-        elapsed = int(time.time() - start)
-        if elapsed % 10 == 0 and elapsed > 0:
-            remaining = timeout - elapsed
-            print(f"  Waiting... ({remaining}s remaining)")
-    print(f"  Timeout: no login detected in {timeout//60} minutes.")
-    return None
-
-
-# ═══════════════════════════════════════════════════════════════
-#  INSTAGRAPI HELPER (legacy GQL, no login)
+#  INSTAGRAPI HELPER
 # ═══════════════════════════════════════════════════════════════
 
 class InstagrapiHelper:
@@ -388,17 +213,6 @@ def build_parser():
     # Misc
     p.add_argument("--no-verify", action="store_true",
         help="Skip SSL verification (not recommended).")
-
-    # Sessionid (will be used in v2.0)
-    p.add_argument("--sessionid", metavar="COOKIE",
-        help="Instagram sessionid cookie (bypasses Apify).")
-    p.add_argument("--setup", action="store_true",
-        help="Interactive login: open browser, save sessionid to config.")
-    p.add_argument("--username", metavar="HANDLE",
-        help="Target Instagram username.")
-    p.add_argument("--version", action="version",
-        version=f"ig-downloader v{VERSION}",
-        help="Show version and exit.")
 
     return p
 
