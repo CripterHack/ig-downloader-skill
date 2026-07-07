@@ -26,28 +26,32 @@ tags:
 
 ## Operation Modes
 
-```
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                          INSTAGRAM DOWNLOADER v2.2                               │
-│                                                                                  │
-│  ┌──────────────────────┐   ┌──────────────────────┐   ┌────────────────────┐   │
-│  │  Mode 1: Sessionid   │   │  Mode 2: Apify       │   │  Mode 3: Setup     │   │
-│  │  (Recommended) 🥇    │   │  (Legacy)            │   │  (Wizard)          │   │
-│  │                      │   │                      │   │                    │   │
-│  │  instagrapi           │   │  Apify Actor         │   │  Playwright        │   │
-│  │  login_by_sessionid()│   │  dataset              │   │  Launches Chromium │   │
-│  │  user_medias()       │   │  GQL enhancement      │   │  Polls cookies()   │   │
-│  │  media_info()        │   │  for carousels        │   │  Saves config      │   │
-│  │                      │   │                       │   │                    │   │
-│  │  ✅ Full catalog     │   │  ✅ No login          │   │  Cross-platform    │   │
-│  │  ✅ All carousels    │   │  ❌ GQL cutoff        │   │  No Chrome dep     │   │
-│  │  ✅ Any date         │   │  ❌ 1st img old       │   │  Triple fallback   │   │
-│  │  ✅ No watermark     │   │                       │   │                    │   │
-│  │  ──────────────      │   │  ──────────────       │   │  ──────────────    │   │
-│  │  Requires:           │   │  Requires:            │   │  One-time setup    │   │
-│  │  sessionid cookie    │   │  Apify dataset ID     │   │  → config.json     │   │
-│  └──────────────────────┘   └──────────────────────┘   └────────────────────┘   │
-└──────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    subgraph Sessionid[Mode 1: Sessionid 🥇]
+        direction TB
+        S1[sessionid cookie] --> S2[login_by_sessionid]
+        S2 --> S3[user_id_from_username]
+        S3 --> S4[user_medias → ALL posts]
+        S4 --> S5[photo_download / video_download]
+        S5 --> S6[📁 YYYY-MM-DD/shortcode/]
+    end
+    
+    subgraph Apify[Mode 2: Apify]
+        direction TB
+        A1[Apify Actor Dataset] --> A2[toon-file or --dataset API]
+        A2 --> A3{GQL available?}
+        A3 -->|Yes &lt;4w| A4[✅ All carousel images]
+        A3 -->|No &gt;4w| A5[❌ First image only]
+    end
+    
+    subgraph Setup[Mode 3: Setup Wizard]
+        direction TB
+        U1[--setup flag] --> U2[Playwright Chromium]
+        U2 --> U3[User logs in]
+        U3 --> U4[Extract sessionid]
+        U4 --> U5[💾 Save to config.json]
+    end
 ```
 
 ### Mode Comparison
@@ -85,32 +89,22 @@ When no sessionid is found → falls to **`--setup`** (interactive) or **Apify m
 
 ### Mode 1: Sessionid (Recommended)
 
-```
-User provides ──→ sessionid cookie
-                        │
-                        ▼
-              instagrapi.login_by_sessionid()
-                        │
-                        ▼
-              cl.user_id_from_username(username)
-                        │
-                        ▼
-              cl.user_medias(user_id, amount=0)
-                  (fetches ALL posts)
-                        │
-              ┌─────────┴──────────┐
-              ▼                    ▼
-         cl.photo_download()   cl.video_download()
-         (photos/carousels)    (reels)
-              │                    │
-              ▼                    ▼
-         <output_dir>/YYYY-MM-DD/<shortcode>/
-             ├── <shortcode>.mp4          (reel)
-             ├── <shortcode>.jpg          (photo)
-             ├── <shortcode>_01.jpg       (carousel img 1/N)
-             ├── <shortcode>_02.jpg       (carousel img 2/N)
-             ├── ...
-             └── post_info.txt            (metadata)
+```mermaid
+flowchart LR
+    COOKIE[sessionid cookie] --> LOGIN[login_by_sessionid]
+    LOGIN --> UID[user_id_from_username]
+    UID --> MEDIAS[user_medias<br/>amount=0 → ALL posts]
+    MEDIAS --> TYPE{media_type}
+    TYPE -->|1: Photo| PHOTO[photo_download → .jpg]
+    TYPE -->|2: Video| REEL[video_download → .mp4]
+    TYPE -->|8: Carousel| CAR[media_info → resources[]]
+    CAR --> IMG1[_01.jpg]
+    CAR --> IMG2[_02.jpg]
+    CAR --> IMGN[_0N.jpg]
+    PHOTO --> DIR[📁 YYYY-MM-DD/shortcode/]
+    REEL --> DIR
+    IMG1 --> DIR
+    DIR --> INFO[+ post_info.txt]
 ```
 
 ### Mode 2: Apify (Fallback)
@@ -119,17 +113,28 @@ Same as v1.x: Apify Actor → dataset → toon file → download (with GQL carou
 
 ### Interactive Setup
 
-```
-No config → run --setup
-    │
-    ├── Playwright (primary): launches Chromium, polls cookies()
-    │     → saves sessionid to ~/.ig-downloader/config.json
-    │
-    ├── Chrome DB (fallback): DPAPI + AES-GCM extraction
-    │     → may fail due to file locks or Chrome updates
-    │
-    └── Manual paste (last resort): prompts user for raw sessionid
-          → saves to config.json
+```mermaid
+flowchart TD
+    A[Run: ig-downloader --setup] --> B{Playwright installed?}
+    B -->|Yes| C[Launch Chromium browser]
+    C --> D[Navigate to instagram.com]
+    D --> E[User logs in]
+    E --> F[Poll context.cookies every 3s]
+    F --> G{sessionid detected?}
+    G -->|No| F
+    G -->|Yes| H[Save to config.json]
+    H --> I[Close browser ✅]
+
+    B -->|No| J{Chrome DB accessible?}
+    J -->|Yes| K[DPAPI + AES-GCM decrypt]
+    K --> L{File locked?}
+    L -->|No| M[Extract sessionid]
+    L -->|Yes| J
+    M --> H
+
+    J -->|No| N[Prompt user: paste sessionid manually]
+    N --> O[Save to config.json]
+    O --> I
 ```
 
 ---
